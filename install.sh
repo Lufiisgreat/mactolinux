@@ -77,24 +77,17 @@ confirm_install() {
 }
 
 read_appimage_path() {
-    appimage_path=
-    if [ -d "$HOME/Downloads" ]; then
+    find_appimage() {
         if [ -f "$HOME/Downloads/$RELEASE_ASSET" ]; then
-            appimage_path="$HOME/Downloads/$RELEASE_ASSET"
-        else
-            appimage_path=$(find "$HOME/Downloads" -type f \
-                -name "$RELEASE_ASSET" -print -quit)
+            printf '%s\n' "$HOME/Downloads/$RELEASE_ASSET"
+        elif [ -d "$HOME/Downloads" ]; then
+            find "$HOME/Downloads" -type f -name "$RELEASE_ASSET" -print -quit
         fi
-    fi
+    }
 
-    if [ -n "$appimage_path" ]; then
-        printf '\nFound %s in Downloads:\n  %s\n' \
-            "$RELEASE_ASSET" "$appimage_path"
-    else
-        printf '\nCould not find %s in ~/Downloads.\n' "$RELEASE_ASSET"
-        printf 'Enter its path or drag and drop the file into this terminal, then press Enter.\n'
-        printf 'AppImage path: '
-        appimage_path=$(python3 -c '
+    read_manual_path() {
+        printf 'AppImage path (or drag and drop the file here): '
+        python3 -c '
 import shlex
 import sys
 
@@ -107,11 +100,44 @@ if len(paths) != 1 or "\n" in paths[0] or "\r" in paths[0]:
     print("Drop one AppImage file path, then press Enter.", file=sys.stderr)
     raise SystemExit(1)
 print(paths[0])
-' </dev/tty) || fail "Could not read the AppImage path."
+' </dev/tty
+    }
+
+    appimage_path=$(find_appimage)
+    if [ -n "$appimage_path" ]; then
+        printf '\nFound %s in Downloads:\n  %s\n' \
+            "$RELEASE_ASSET" "$appimage_path"
+    else
+        while :; do
+            printf '\nCould not find %s in ~/Downloads.\n' "$RELEASE_ASSET"
+            printf '╭────────────────────────────────────────────╮\n'
+            printf '│  [1] Try searching Downloads again         │\n'
+            printf '│  [2] Enter the file path myself            │\n'
+            printf '│  [3] Cancel installation                   │\n'
+            printf '╰────────────────────────────────────────────╯\n'
+            printf 'Choose an option [1-3]: '
+            IFS= read -r choice </dev/tty || cancel_install
+            case "$choice" in
+                1)
+                    appimage_path=$(find_appimage)
+                    if [ -n "$appimage_path" ]; then
+                        printf '\nFound %s:\n  %s\n' \
+                            "$RELEASE_ASSET" "$appimage_path"
+                    fi
+                    ;;
+                2)
+                    appimage_path=$(read_manual_path) ||
+                        fail "Could not read the AppImage path."
+                    ;;
+                3) cancel_install ;;
+                *) printf 'Please choose 1, 2, or 3.\n' ;;
+            esac
+            [ -n "$appimage_path" ] && break
+        done
     fi
 
     [ -f "$appimage_path" ] ||
-        fail "That path is not a file. Run the installer again and provide the AppImage file."
+        fail "That path is not a file. Run the installer again and choose another option."
     python3 - "$appimage_path" <<'PY'
 import struct
 import sys
