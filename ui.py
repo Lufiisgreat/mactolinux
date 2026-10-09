@@ -479,29 +479,28 @@ class RobloxLauncher(Gtk.Application):
         )
         checking_page.add_css_class("content")
         checking_page.set_valign(Gtk.Align.CENTER)
+        checking_page.set_halign(Gtk.Align.CENTER)
         self.stack.add_named(checking_page, "checking")
-        checking_card = Gtk.Box(
-            orientation=Gtk.Orientation.VERTICAL, spacing=12
-        )
-        checking_card.add_css_class("intro")
-        checking_card.set_halign(Gtk.Align.FILL)
-        checking_page.append(checking_card)
         self.loading_spinner = Gtk.Spinner()
         self.loading_spinner.set_size_request(42, 42)
         self.loading_spinner.set_halign(Gtk.Align.CENTER)
-        checking_card.append(self.loading_spinner)
+        checking_page.append(self.loading_spinner)
         self.loading_title = self.label("Checking for Roblox updates")
         self.loading_title.add_css_class("page-title")
         self.loading_title.set_halign(Gtk.Align.CENTER)
-        checking_card.append(self.loading_title)
+        checking_title_row = Gtk.Box()
+        checking_title_row.set_halign(Gtk.Align.CENTER)
+        checking_title_row.append(self.loading_title)
+        checking_page.append(checking_title_row)
         self.loading_copy = self.secondary_label(
             "This may take a moment. Your launcher menu will appear when the "
             "check is complete.",
             "page-copy",
         )
+        self.loading_copy.set_xalign(0.5)
         self.loading_copy.set_halign(Gtk.Align.CENTER)
         self.loading_copy.set_wrap(True)
-        checking_card.append(self.loading_copy)
+        checking_page.append(self.loading_copy)
 
     def apply_theme(self, theme):
         self.theme_provider.load_from_data(THEMES[theme] + CSS)
