@@ -36,7 +36,7 @@ TEXTURE_FLAGS = {
 }
 DESKTOP_FILE_NAME = "roblox-linux-release.desktop"
 DESKTOP_SHORTCUT_MARKER = "X-RobloxLinuxRelease=true"
-APP_NAME = "roblox-linux-release"
+APP_NAME = "Mactolinux"
 
 
 CSS = b"""
@@ -976,9 +976,11 @@ class RobloxLauncher(Gtk.Application):
         self.refresh_running_state()
         if version:
             short_version = version.removeprefix("version-")
-            self.version_badge.set_text(f"Installed version: {short_version}")
+            self.version_badge.set_text(
+                f"Roblox client version: {short_version}"
+            )
         else:
-            self.version_badge.set_text("Roblox is not installed yet")
+            self.version_badge.set_text("Roblox client is not installed yet")
         self.play_button.set_sensitive(not self.job_running)
         self.terminate_button.set_sensitive(not self.job_running)
         self.update_button.set_sensitive(not self.job_running)
