@@ -6,7 +6,6 @@ import sys
 import time
 from pathlib import Path
 from urllib.parse import urlsplit
-
 import gi
 
 gi.require_version("Gtk", "4.0")
@@ -105,12 +104,12 @@ textview.log-view {
 
 
 class RobloxLaunchWindow(Gtk.Application):
-    def __init__(self, game_uri=None):
+    def __init__(self, launch_uri=None):
         super().__init__(
             application_id="com.robloxlinux.release.launch",
             flags=Gio.ApplicationFlags.DEFAULT_FLAGS,
         )
-        self.game_uri = game_uri
+        self.launch_uri = launch_uri
         self.window = None
         self.status = None
         self.spinner = None
@@ -167,7 +166,7 @@ class RobloxLaunchWindow(Gtk.Application):
 
         heading = Gtk.Label(
             label="Joining Roblox game"
-            if self.game_uri
+            if self.launch_uri
             else "Starting Roblox"
         )
         heading.add_css_class("launch-title")
@@ -177,7 +176,7 @@ class RobloxLaunchWindow(Gtk.Application):
         self.status = Gtk.Label(
             label=(
                 "Launching your selected game. Please wait…"
-                if self.game_uri
+                if self.launch_uri
                 else "Launching Roblox. Please wait…"
             )
         )
@@ -239,8 +238,8 @@ class RobloxLaunchWindow(Gtk.Application):
             self.initial_player_pids = self.find_player_processes()
             self.log_file = LOG_FILE.open("w", encoding="utf-8", buffering=1)
             command = ["sh", str(HERE / "run.sh")]
-            if self.game_uri is not None:
-                command.append(self.game_uri)
+            if self.launch_uri is not None:
+                command.append(self.launch_uri)
             self.process = subprocess.Popen(
                 command,
                 cwd=HERE,
@@ -331,12 +330,11 @@ class RobloxLaunchWindow(Gtk.Application):
         return GLib.SOURCE_REMOVE
 
 
-def parse_game_uri(arguments):
+def parse_launch_uri(arguments):
     if not arguments:
         return None
     if len(arguments) != 1:
-        raise ValueError("Expected at most one Roblox game launch URI.")
-
+        raise ValueError("Expected one Roblox game launch URI.")
     uri = arguments[0]
     if len(uri) > 32768 or any(character.isspace() for character in uri):
         raise ValueError("The Roblox game launch URI is invalid.")
@@ -351,9 +349,9 @@ def parse_game_uri(arguments):
 
 if __name__ == "__main__":
     try:
-        game_uri = parse_game_uri(sys.argv[1:])
+        launch_uri = parse_launch_uri(sys.argv[1:])
     except ValueError as error:
         print(error, file=sys.stderr)
         raise SystemExit(2) from error
-    app = RobloxLaunchWindow(game_uri)
+    app = RobloxLaunchWindow(launch_uri)
     raise SystemExit(app.run(None))

@@ -17,5 +17,8 @@ unset APPIMAGE_TARGET_DIR
 export TMPDIR=$HERE/DO_NOT_SHARE/tmp TMP=$HERE/DO_NOT_SHARE/tmp TEMP=$HERE/DO_NOT_SHARE/tmp
 case "${1:-}" in
     --diagnose|--debug|--client-version|--download-client) exec "$HERE/RobloxLinux.AppImage" "$@";;
+    roblox://*|roblox-player:*)
+        [ "$#" -eq 1 ] || { echo "Expected one Roblox game launch URI." >&2; exit 2; }
+        exec "$HERE/RobloxLinux.AppImage" --debug -url "$1";;
     *) exec "$HERE/RobloxLinux.AppImage" --debug "$@";;
 esac

@@ -70,6 +70,18 @@ ROBLOX_SESSION_ATTRIBUTES = {"application": "mactolinux"}
 ROBLOX_SESSION_COOKIE = ".ROBLOSECURITY"
 
 
+def validate_game_uri(uri):
+    try:
+        parsed_uri = urlsplit(uri)
+    except ValueError as error:
+        raise ValueError("The Roblox game link is invalid.") from error
+    if parsed_uri.scheme.casefold() not in ("roblox-player", "roblox"):
+        raise ValueError("Only Roblox game launch links are supported.")
+    if len(uri) > 32768 or any(character.isspace() for character in uri):
+        raise ValueError("The Roblox game link is invalid.")
+    return uri
+
+
 CSS = b"""
 window {
   background: @app_bg;
@@ -1520,17 +1532,12 @@ class RobloxLauncher(Gtk.Application):
 
     def open_game_uri(self, uri):
         try:
-            scheme = urlsplit(uri).scheme.casefold()
+            launch_uri = validate_game_uri(uri)
         except ValueError as error:
-            self.show_discover_message(f"Roblox sent an invalid game link: {error}")
-            return
-        if scheme not in ("roblox-player", "roblox"):
-            self.show_discover_message(
-                "The selected link is not a Roblox game launch link."
-            )
+            self.show_discover_message(f"Could not read the Roblox game link: {error}")
             return
         try:
-            started = self.play(None, uri)
+            started = self.play(None, launch_uri)
         except (OSError, ValueError, RuntimeError) as error:
             self.show_discover_message(
                 f"Could not start this game with Mactolinux: {error}"
