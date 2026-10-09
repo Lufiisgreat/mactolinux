@@ -492,6 +492,28 @@ class RobloxLauncher(Gtk.Application):
         )
         info_message.set_wrap(True)
         info_page.append(info_message)
+        info_links = Gtk.Box(
+            orientation=Gtk.Orientation.HORIZONTAL, spacing=9
+        )
+        info_page.append(info_links)
+        icon_theme = Gtk.IconTheme.get_for_display(display)
+        github_icon = (
+            "github"
+            if icon_theme.has_icon("github")
+            else "web-browser-symbolic"
+        )
+        for uri, label_text in (
+            ("https://github.com/Lufiisgreat/mactolinux", "GitHub repository"),
+            ("https://github.com/Lufiisgreat", "Made by Lufiisgreat"),
+        ):
+            link_button = Gtk.LinkButton(uri=uri)
+            link_row = Gtk.Box(
+                orientation=Gtk.Orientation.HORIZONTAL, spacing=7
+            )
+            link_row.append(Gtk.Image.new_from_icon_name(github_icon))
+            link_row.append(Gtk.Label(label=label_text))
+            link_button.set_child(link_row)
+            info_links.append(link_button)
 
         checking_page = Gtk.Box(
             orientation=Gtk.Orientation.VERTICAL, spacing=16
