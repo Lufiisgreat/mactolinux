@@ -22,7 +22,7 @@ application menu and creates the `mactolinux` command in
 Choose **Update** here to refresh Mactolinux itself. The launcher's
 **Check for Roblox updates** button updates the Roblox client, not Mactolinux.
 
-The Home page has separate update checks: **Check for Roblox updates** updates
+The Launcher page has separate update checks: **Check for Roblox updates** updates
 the Roblox client, while **Check for Mactolinux updates** checks GitHub for a
 new launcher commit. To install a newer launcher commit, run the installer
 again and choose **Update**. Mactolinux also checks for a newer launcher
@@ -35,11 +35,28 @@ CachyOS, install the required packages with:
 sudo pacman -S python gtk4 python-gobject wmctrl
 ```
 
+For encrypted Roblox sign-in persistence, install WebKitGTK and Secret
+Service support:
+
+```sh
+sudo pacman -S webkitgtk-6.0 libsecret
+```
+
 On Ubuntu or Debian, install them with:
 
 ```sh
-sudo apt install python3 python3-gi gir1.2-gtk-4.0 wmctrl
+sudo apt install python3 python3-gi gir1.2-gtk-4.0 gir1.2-webkit-6.0 gir1.2-secret-1 wmctrl
 ```
+
+Discover opens the Roblox website inside the launcher when WebKitGTK 6.0 is
+installed. Otherwise, it offers to open the site in your default browser. The
+launcher opens its own control page first; choose **Discover** to browse
+Roblox. The Roblox `.ROBLOSECURITY` session cookie is saved encrypted through
+the desktop Secret Service/keyring, such as KDE Wallet. Mactolinux does not
+store your Roblox password. Without keyring support, the embedded browser
+does not save your login. Game Play links from Discover are passed directly
+to Mactolinux's Roblox AppImage, not the system's default `roblox-player` or
+`roblox` URL handler.
 
 `wmctrl` lets the launcher fullscreen Roblox while its player process is
 running and restore the window when it exits. In KDE Plasma Wayland, this
@@ -61,10 +78,11 @@ downloaded file in `~/Downloads` or provide its path when the installer asks.
 The Uninstall tab lets you remove just the Roblox client and shaders while
 keeping saved data and modification files, or remove the full Mactolinux
 installation, including `DO_NOT_SHARE`, modification files, launcher files,
-desktop-menu entry, and command.
+desktop-menu entry, command, and encrypted Roblox session in the desktop
+keyring.
 
 ## Notes
 
 - This project is unofficial and is not affiliated with Roblox.
-- Roblox session data, settings, and logs stay in the local
-  `DO_NOT_SHARE` folder and should never be uploaded.
+- Settings and logs stay in the local `DO_NOT_SHARE` folder and should never
+  be uploaded. The Roblox session cookie is encrypted by the desktop keyring.

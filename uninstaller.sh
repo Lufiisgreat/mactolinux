@@ -58,7 +58,8 @@ if [ "$mode" = roblox-only ]; then
         rm -rf -- "$HERE/RobloxVersion"
     fi
     echo "Removed the installed Roblox client and prepared shaders."
-    echo "Saved login, settings, and logs were kept in DO_NOT_SHARE."
+    echo "Settings and logs were kept in DO_NOT_SHARE."
+    echo "The encrypted Roblox session remains in the desktop keyring."
     exit 0
 fi
 

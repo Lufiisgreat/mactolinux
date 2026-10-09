@@ -2,8 +2,10 @@
 import json
 import os
 import subprocess
+import sys
 import time
 from pathlib import Path
+from urllib.parse import urlsplit
 
 import gi
 
@@ -19,32 +21,26 @@ SETTINGS_FILE = DATA / "settings.json"
 
 THEMES = {
     "dark": b"""
-@define-color app_bg #17191d;
-@define-color app_fg #edf0f4;
-@define-color header_top #25282e;
-@define-color header_bottom #1d2025;
-@define-color border #383d46;
-@define-color intro_start #272b33;
-@define-color intro_end #1d2026;
-@define-color intro_border #353a43;
-@define-color status_bg #20242a;
-@define-color secondary_fg #b0b6c0;
-@define-color footer_fg #989faa;
-@define-color accent #8da8d0;
+@define-color app_bg #191a1b;
+@define-color app_fg #f7f7f8;
+@define-color header_top #191a1b;
+@define-color border #343638;
+@define-color status_bg #222426;
+@define-color log_bg #1c1d1f;
+@define-color secondary_fg #b0b4b8;
+@define-color footer_fg #858a8e;
+@define-color accent #6b91ff;
 """,
     "light": b"""
-@define-color app_bg #e8eaed;
-@define-color app_fg #24272d;
-@define-color header_top #f5f6f7;
-@define-color header_bottom #e4e6e9;
-@define-color border #d5d8dd;
-@define-color intro_start #f5f6f7;
-@define-color intro_end #e5e7eb;
-@define-color intro_border #f9fafb;
-@define-color status_bg #f4f5f6;
-@define-color secondary_fg #646a73;
-@define-color footer_fg #747a83;
-@define-color accent #596579;
+@define-color app_bg #ffffff;
+@define-color app_fg #191b1f;
+@define-color header_top #ffffff;
+@define-color border #e1e3e6;
+@define-color status_bg #f5f6f7;
+@define-color log_bg #fafafa;
+@define-color secondary_fg #60656b;
+@define-color footer_fg #777d83;
+@define-color accent #335fff;
 """,
 }
 
@@ -54,22 +50,22 @@ window {
   color: @app_fg;
 }
 headerbar {
-  background: linear-gradient(180deg, @header_top, @header_bottom);
+  background: @header_top;
   border-bottom: 1px solid @border;
   box-shadow: none;
 }
 .launch-content {
-  padding: 26px 30px 22px;
+  padding: 22px 26px 20px;
 }
 .launch-card {
-  background: linear-gradient(115deg, @intro_start 0%, @intro_end 100%);
-  border: 1px solid @intro_border;
-  border-radius: 14px;
-  padding: 24px;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  padding: 10px 4px;
 }
 .launch-title {
-  font-size: 22px;
-  font-weight: 650;
+  font-size: 20px;
+  font-weight: 700;
 }
 .launch-copy {
   color: @secondary_fg;
@@ -81,14 +77,25 @@ headerbar {
 .log-panel {
   background: @status_bg;
   border: 1px solid @border;
-  border-radius: 10px;
+  border-radius: 5px;
+}
+.log-header {
+  padding: 9px 12px;
+  border-bottom: 1px solid @border;
 }
 .log-title {
-  font-weight: 600;
+  color: @secondary_fg;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.6px;
+}
+textview.log-view {
+  background: @log_bg;
+  color: @app_fg;
 }
 .log-view {
   padding: 10px;
-  font-size: 11px;
+  font-size: 12px;
 }
 .footer {
   color: @footer_fg;
@@ -98,11 +105,12 @@ headerbar {
 
 
 class RobloxLaunchWindow(Gtk.Application):
-    def __init__(self):
+    def __init__(self, game_uri=None):
         super().__init__(
             application_id="com.robloxlinux.release.launch",
             flags=Gio.ApplicationFlags.DEFAULT_FLAGS,
         )
+        self.game_uri = game_uri
         self.window = None
         self.status = None
         self.spinner = None
@@ -140,7 +148,7 @@ class RobloxLaunchWindow(Gtk.Application):
 
         header = Gtk.HeaderBar()
         self.window.set_titlebar(header)
-        title = Gtk.Label(label="Mactolinux")
+        title = Gtk.Label(label="ROBLOX")
         title.add_css_class("title")
         header.set_title_widget(title)
 
@@ -151,41 +159,54 @@ class RobloxLaunchWindow(Gtk.Application):
         content.append(hero)
 
         self.spinner = Gtk.Spinner()
-        self.spinner.set_size_request(76, 76)
+        self.spinner.set_size_request(48, 48)
         self.spinner.add_css_class("launch-spinner")
         self.spinner.start()
         hero.append(self.spinner)
         self.spinner.set_halign(Gtk.Align.CENTER)
 
-        heading = Gtk.Label(label="Starting Roblox")
+        heading = Gtk.Label(
+            label="Joining Roblox game"
+            if self.game_uri
+            else "Starting Roblox"
+        )
         heading.add_css_class("launch-title")
         heading.set_halign(Gtk.Align.CENTER)
         hero.append(heading)
 
-        self.status = Gtk.Label(label="Launching Roblox. Please wait…")
+        self.status = Gtk.Label(
+            label=(
+                "Launching your selected game. Please wait…"
+                if self.game_uri
+                else "Launching Roblox. Please wait…"
+            )
+        )
         self.status.add_css_class("launch-copy")
         self.status.set_halign(Gtk.Align.CENTER)
         self.status.set_wrap(True)
         hero.append(self.status)
 
-        logs = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+        logs = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
         logs.set_size_request(-1, 170)
         logs.add_css_class("log-panel")
         content.append(logs)
 
-        log_title = Gtk.Label(label="Command output")
+        log_header = Gtk.Box(
+            orientation=Gtk.Orientation.HORIZONTAL, spacing=8
+        )
+        log_header.add_css_class("log-header")
+        logs.append(log_header)
+        log_title = Gtk.Label(label="LAUNCH LOG")
         log_title.add_css_class("log-title")
         log_title.set_halign(Gtk.Align.START)
-        log_title.set_margin_top(10)
-        log_title.set_margin_start(12)
-        logs.append(log_title)
+        log_header.append(log_title)
 
         scroller = Gtk.ScrolledWindow()
         scroller.set_hexpand(True)
         scroller.set_vexpand(True)
-        scroller.set_margin_bottom(6)
-        scroller.set_margin_start(8)
-        scroller.set_margin_end(8)
+        scroller.set_margin_bottom(4)
+        scroller.set_margin_start(4)
+        scroller.set_margin_end(4)
         logs.append(scroller)
         self.log_buffer = Gtk.TextBuffer()
         self.log_view = Gtk.TextView(buffer=self.log_buffer)
@@ -201,14 +222,14 @@ class RobloxLaunchWindow(Gtk.Application):
         try:
             settings = json.loads(SETTINGS_FILE.read_text(encoding="utf-8"))
         except FileNotFoundError:
-            return "dark"
+            return "light"
         except (OSError, json.JSONDecodeError) as error:
             print(f"Could not read launcher theme settings: {error}", flush=True)
-            return "dark"
-        theme = settings.get("theme", "dark") if isinstance(settings, dict) else "dark"
+            return "light"
+        theme = settings.get("theme", "light") if isinstance(settings, dict) else "light"
         if not isinstance(theme, str) or theme not in THEMES:
-            print(f"Unknown launcher theme {theme!r}; using dark theme.", flush=True)
-            return "dark"
+            print(f"Unknown launcher theme {theme!r}; using light theme.", flush=True)
+            return "light"
         return theme
 
     def start_launch(self):
@@ -217,8 +238,11 @@ class RobloxLaunchWindow(Gtk.Application):
             os.chmod(DATA, 0o700)
             self.initial_player_pids = self.find_player_processes()
             self.log_file = LOG_FILE.open("w", encoding="utf-8", buffering=1)
+            command = ["sh", str(HERE / "run.sh")]
+            if self.game_uri is not None:
+                command.append(self.game_uri)
             self.process = subprocess.Popen(
-                ["sh", str(HERE / "run.sh")],
+                command,
                 cwd=HERE,
                 stdin=subprocess.DEVNULL,
                 stdout=self.log_file,
@@ -307,6 +331,29 @@ class RobloxLaunchWindow(Gtk.Application):
         return GLib.SOURCE_REMOVE
 
 
+def parse_game_uri(arguments):
+    if not arguments:
+        return None
+    if len(arguments) != 1:
+        raise ValueError("Expected at most one Roblox game launch URI.")
+
+    uri = arguments[0]
+    if len(uri) > 32768 or any(character.isspace() for character in uri):
+        raise ValueError("The Roblox game launch URI is invalid.")
+    try:
+        scheme = urlsplit(uri).scheme.casefold()
+    except ValueError as error:
+        raise ValueError("The Roblox game launch URI is invalid.") from error
+    if scheme not in ("roblox-player", "roblox"):
+        raise ValueError("Only Roblox game launch URIs are supported.")
+    return uri
+
+
 if __name__ == "__main__":
-    app = RobloxLaunchWindow()
+    try:
+        game_uri = parse_game_uri(sys.argv[1:])
+    except ValueError as error:
+        print(error, file=sys.stderr)
+        raise SystemExit(2) from error
+    app = RobloxLaunchWindow(game_uri)
     raise SystemExit(app.run(None))

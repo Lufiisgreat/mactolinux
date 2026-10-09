@@ -9,12 +9,28 @@ import threading
 import urllib.error
 import urllib.request
 from pathlib import Path
+from urllib.parse import urlsplit
 
 import gi
 
 gi.require_version("Gtk", "4.0")
 gi.require_version("Gdk", "4.0")
 from gi.repository import Gdk, Gio, GLib, Gtk
+
+try:
+    gi.require_version("WebKit", "6.0")
+    gi.require_version("Soup", "3.0")
+    from gi.repository import WebKit
+    from gi.repository import Soup
+except (ImportError, ValueError):
+    WebKit = None
+    Soup = None
+
+try:
+    gi.require_version("Secret", "1")
+    from gi.repository import Secret
+except (ImportError, ValueError):
+    Secret = None
 
 import mods
 
@@ -37,6 +53,17 @@ TEXTURE_FLAGS = {
 DESKTOP_FILE_NAME = "roblox-linux-release.desktop"
 DESKTOP_SHORTCUT_MARKER = "X-RobloxLinuxRelease=true"
 APP_NAME = "Mactolinux"
+ROBLOX_SESSION_SCHEMA = (
+    Secret.Schema.new(
+        "org.mactolinux.RobloxSession",
+        Secret.SchemaFlags.NONE,
+        {"application": Secret.SchemaAttributeType.STRING},
+    )
+    if Secret is not None
+    else None
+)
+ROBLOX_SESSION_ATTRIBUTES = {"application": "mactolinux"}
+ROBLOX_SESSION_COOKIE = ".ROBLOSECURITY"
 
 
 CSS = b"""
@@ -137,29 +164,47 @@ switch:checked {
 .app-shell {
   background: @app_bg;
 }
+.discover-page {
+  background: #fff;
+}
+.discover-status {
+  padding: 8px 12px;
+  background: @button_hover;
+  color: @secondary_fg;
+  font-size: 12px;
+}
+.discover-fallback {
+  padding: 32px;
+}
+.discover-fallback-title {
+  font-size: 20px;
+  font-weight: 700;
+}
 .sidebar {
   background: @sidebar_bg;
   border-right: 1px solid @border;
-  padding: 18px 10px;
-  min-width: 190px;
+  padding: 14px 8px;
+  min-width: 180px;
 }
 .sidebar-brand {
-  padding: 4px 10px 16px;
+  padding: 4px 10px 10px;
 }
 .sidebar-brand-label {
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 700;
+  letter-spacing: 1px;
 }
 .nav {
   padding-top: 2px;
 }
 .nav button.nav-button {
-  min-height: 40px;
-  padding: 0 10px;
+  min-height: 38px;
+  padding: 0 9px;
   background: transparent;
   border-color: transparent;
-  border-radius: 5px;
+  border-radius: 4px;
   color: @secondary_fg;
+  font-size: 13px;
 }
 .nav button.nav-button:hover {
   background: @button_hover;
@@ -167,8 +212,14 @@ switch:checked {
 }
 .nav button.nav-button.selected {
   background: @nav_selected;
-  color: @nav_selected_fg;
+  color: @accent;
   font-weight: 600;
+}
+.nav-section-label {
+  padding: 12px 10px 5px;
+  color: @footer_fg;
+  font-size: 10px;
+  font-weight: 700;
 }
 .nav-button-content {
   min-width: 150px;
@@ -199,12 +250,11 @@ THEMES = {
 @define-color app_fg #191b1f;
 @define-color header_top #ffffff;
 @define-color border #e1e3e6;
-@define-color sidebar_bg #ffffff;
+@define-color sidebar_bg #f7f7f8;
 @define-color button_bg #ffffff;
 @define-color button_hover #f2f3f5;
 @define-color button_selected #e9eaec;
-@define-color nav_selected #f0f1f3;
-@define-color nav_selected_fg #191b1f;
+@define-color nav_selected #eef3ff;
 @define-color intro_start #ffffff;
 @define-color intro_border #e1e3e6;
 @define-color status_bg #ffffff;
@@ -222,8 +272,7 @@ THEMES = {
 @define-color button_bg #242526;
 @define-color button_hover #303234;
 @define-color button_selected #3b3d3f;
-@define-color nav_selected #303234;
-@define-color nav_selected_fg #ffffff;
+@define-color nav_selected #252c3b;
 @define-color intro_start #191a1b;
 @define-color intro_border #343638;
 @define-color status_bg #191a1b;
@@ -291,6 +340,17 @@ class RobloxLauncher(Gtk.Application):
         self.stack = None
         self.navigation = None
         self.navigation_buttons = {}
+        self.sidebar = None
+        self.discover_status = None
+        self.web_view = None
+        self.web_network_session = None
+        self.web_cookie_manager = None
+        self.discover_loaded = False
+        self.cookie_restore_pending = 0
+        self.cookie_restore_errors = []
+        self.cookie_save_source = 0
+        self.cookie_save_generation = 0
+        self.cookie_save_lock = threading.Lock()
         self.startup_check_started = False
         self.launcher_startup_check_started = False
         self.running_monitor_started = False
@@ -303,6 +363,7 @@ class RobloxLauncher(Gtk.Application):
         self.launcher_update_button = None
         self.desktop_button = None
         self.remove_desktop_button = None
+        self.sidebar_play_button = None
         self.uninstall_action = None
         self.uninstall_status = None
         self.status_title = None
@@ -311,7 +372,7 @@ class RobloxLauncher(Gtk.Application):
         self.spinner = None
         self.theme_provider = None
         self.settings = {
-            "theme": "dark",
+            "theme": "light",
             "check_updates_on_startup": True,
             "modifications_enabled": False,
         }
@@ -336,7 +397,7 @@ class RobloxLauncher(Gtk.Application):
                 saved_settings = json.loads(SETTINGS_FILE.read_text(encoding="utf-8"))
                 if not isinstance(saved_settings, dict):
                     raise ValueError("Settings must be a JSON object.")
-                theme = saved_settings.get("theme", "dark")
+                theme = saved_settings.get("theme", "light")
                 check_updates = saved_settings.get("check_updates_on_startup", True)
                 modifications_enabled = saved_settings.get(
                     "modifications_enabled", False
@@ -379,13 +440,27 @@ class RobloxLauncher(Gtk.Application):
         )
 
         self.window = Gtk.ApplicationWindow(application=self, title=APP_NAME)
-        self.window.set_default_size(1020, 700)
+        self.window.set_default_size(1200, 760)
 
         header = Gtk.HeaderBar()
         self.window.set_titlebar(header)
-        title = Gtk.Label(label=APP_NAME)
-        title.add_css_class("title")
-        header.set_title_widget(title)
+        menu_button = Gtk.Button.new_from_icon_name("open-menu-symbolic")
+        menu_button.add_css_class("flat")
+        menu_button.set_tooltip_text("Show or hide navigation")
+        menu_button.connect("clicked", self.toggle_sidebar)
+        header.pack_start(menu_button)
+
+        header_title = Gtk.Label(label="ROBLOX")
+        header_title.add_css_class("sidebar-brand-label")
+        header.set_title_widget(header_title)
+
+        account_button = Gtk.Button.new_from_icon_name(
+            "preferences-system-symbolic"
+        )
+        account_button.add_css_class("flat")
+        account_button.set_tooltip_text("Settings")
+        account_button.connect("clicked", self.show_page, "settings")
+        header.pack_end(account_button)
 
         shell = Gtk.Box(
             orientation=Gtk.Orientation.HORIZONTAL, spacing=0
@@ -393,37 +468,26 @@ class RobloxLauncher(Gtk.Application):
         shell.add_css_class("app-shell")
         self.window.set_child(shell)
 
-        sidebar = Gtk.Box(
+        self.sidebar = Gtk.Box(
             orientation=Gtk.Orientation.VERTICAL, spacing=10
         )
-        sidebar.set_size_request(220, -1)
-        sidebar.add_css_class("sidebar")
-        shell.append(sidebar)
+        self.sidebar.set_size_request(185, -1)
+        self.sidebar.add_css_class("sidebar")
+        shell.append(self.sidebar)
 
-        brand = Gtk.Box(
-            orientation=Gtk.Orientation.HORIZONTAL, spacing=10
-        )
-        brand.add_css_class("sidebar-brand")
-        sidebar.append(brand)
-        brand_icon = Gtk.Image.new_from_icon_name(
-            "applications-games-symbolic"
-        )
-        brand_icon.set_pixel_size(24)
-        brand.append(brand_icon)
-        brand_label = self.label(APP_NAME)
-        brand_label.add_css_class("sidebar-brand-label")
-        brand.append(brand_label)
+        self.sidebar.append(self.secondary_label("MENU", "nav-section-label"))
 
         self.navigation = Gtk.Box(
             orientation=Gtk.Orientation.VERTICAL, spacing=4
         )
         self.navigation.add_css_class("nav")
-        sidebar.append(self.navigation)
+        self.sidebar.append(self.navigation)
         for page_name, label, icon_name in (
-            ("home", "Home", "go-home-symbolic"),
-            ("fflags", "FFlags", "applications-system-symbolic"),
+            ("home", "Discover", "go-home-symbolic"),
+            ("launcher", "Launcher", "applications-games-symbolic"),
+            ("fflags", "FFlags & Mods", "applications-system-symbolic"),
             ("settings", "Settings", "preferences-system-symbolic"),
-            ("info", "Info", "help-about-symbolic"),
+            ("info", "About", "help-about-symbolic"),
             ("uninstall", "Uninstall", "user-trash-symbolic"),
         ):
             button = Gtk.Button()
@@ -441,6 +505,16 @@ class RobloxLauncher(Gtk.Application):
             self.navigation_buttons[page_name] = button
             self.navigation.append(button)
 
+        self.sidebar.append(Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL))
+        self.sidebar_play_button = Gtk.Button(label="Play Roblox")
+        self.sidebar_play_button.add_css_class("suggested-action")
+        self.sidebar_play_button.connect("clicked", self.play)
+        self.sidebar_play_button.set_margin_top(4)
+        self.sidebar_play_button.set_margin_start(4)
+        self.sidebar_play_button.set_margin_end(4)
+        self.sidebar.append(self.sidebar_play_button)
+        self.sidebar.set_visible(False)
+
         self.stack = Gtk.Stack()
         self.stack.set_hexpand(True)
         self.stack.set_vexpand(True)
@@ -449,9 +523,57 @@ class RobloxLauncher(Gtk.Application):
         shell.append(self.stack)
         self.apply_theme(self.settings["theme"])
 
+        discover_page = Gtk.Box(
+            orientation=Gtk.Orientation.VERTICAL, spacing=0
+        )
+        discover_page.add_css_class("discover-page")
+        self.stack.add_named(discover_page, "home")
+        if WebKit is not None:
+            try:
+                self.web_network_session = WebKit.NetworkSession.new_ephemeral()
+                self.web_view = WebKit.WebView(
+                    network_session=self.web_network_session
+                )
+            except (OSError, GLib.Error) as error:
+                self.build_discover_fallback(
+                    discover_page,
+                    f"Could not prepare private Roblox browser data: {error}",
+                )
+            else:
+                self.discover_status = Gtk.Label()
+                self.discover_status.add_css_class("discover-status")
+                self.discover_status.set_xalign(0)
+                self.discover_status.set_wrap(True)
+                self.discover_status.set_visible(False)
+                discover_page.append(self.discover_status)
+                self.web_view.set_hexpand(True)
+                self.web_view.set_vexpand(True)
+                self.web_view.connect(
+                    "decide-policy", self.on_web_decide_policy
+                )
+                self.web_view.connect("load-failed", self.on_web_load_failed)
+                discover_page.append(self.web_view)
+                self.web_cookie_manager = (
+                    self.web_network_session.get_cookie_manager()
+                )
+                self.web_cookie_manager.connect(
+                    "changed", self.on_browser_cookies_changed
+                )
+                if Secret is None:
+                    self.show_discover_message(
+                        "KDE Wallet support is unavailable; your Roblox login "
+                        "will not be saved."
+                    )
+        else:
+            self.build_discover_fallback(
+                discover_page,
+                "The embedded Roblox website needs WebKitGTK 6.0.",
+            )
+
         content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=18)
         content.add_css_class("content")
-        self.stack.add_named(content, "home")
+        content.set_margin_start(2)
+        self.stack.add_named(content, "launcher")
 
         intro = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
         intro.add_css_class("intro")
@@ -468,11 +590,11 @@ class RobloxLauncher(Gtk.Application):
         )
         welcome_text.set_valign(Gtk.Align.CENTER)
         welcome_row.append(welcome_text)
-        heading = self.label("Welcome to Mactolinux")
+        heading = self.label("For You")
         heading.add_css_class("intro-title")
         welcome_text.append(heading)
         welcome_copy = self.secondary_label(
-            "Your home for setting up and playing Roblox on Linux.",
+            "Your Roblox client, ready to play.",
             "intro-copy",
         )
         welcome_copy.set_wrap(True)
@@ -549,8 +671,8 @@ class RobloxLauncher(Gtk.Application):
         separator = Gtk.Separator()
         content.append(separator)
         footer = self.secondary_label(
-            "Roblox session data and diagnostic logs are stored locally in "
-            "DO_NOT_SHARE.",
+            "Roblox login sessions are encrypted in the desktop keyring; "
+            "diagnostic logs remain in DO_NOT_SHARE.",
             "footer",
         )
         footer.set_wrap(True)
@@ -572,7 +694,8 @@ class RobloxLauncher(Gtk.Application):
             )
         )
         data_note = self.secondary_label(
-            "Your saved login, settings and logs in DO_NOT_SHARE will be kept.",
+            "Your encrypted Roblox login in the desktop keyring, settings "
+            "and logs will be kept.",
             "page-copy",
         )
         data_note.set_wrap(True)
@@ -600,7 +723,8 @@ class RobloxLauncher(Gtk.Application):
         info_page.append(info_title)
         info_message = self.secondary_label(
             "Mactolinux helps you install and launch the Roblox macOS client "
-            "on Linux. Use Home to play or update, FFlags to manage the "
+            "on Linux. Use the Launcher page to play or update, Discover to "
+            "browse Roblox, FFlags to manage the "
             "texture-quality override, and Settings to choose a theme or "
             "startup update checks.",
             "page-copy",
@@ -657,6 +781,7 @@ class RobloxLauncher(Gtk.Application):
         self.loading_copy.set_halign(Gtk.Align.CENTER)
         self.loading_copy.set_wrap(True)
         checking_page.append(self.loading_copy)
+        self.show_page(None, "launcher")
 
     def apply_theme(self, theme):
         self.theme_provider.load_from_data(THEMES[theme] + CSS)
@@ -1041,11 +1166,313 @@ class RobloxLauncher(Gtk.Application):
 
     def show_page(self, _button, page_name):
         self.stack.set_visible_child_name(page_name)
+        self.sidebar.set_visible(page_name != "home")
+        if page_name == "home":
+            self.load_discover_page()
         for name, button in self.navigation_buttons.items():
             if name == page_name:
                 button.add_css_class("selected")
             else:
                 button.remove_css_class("selected")
+
+    def toggle_sidebar(self, _button):
+        self.sidebar.set_visible(not self.sidebar.get_visible())
+
+    def load_discover_page(self):
+        if self.discover_loaded or self.web_view is None:
+            return
+        self.discover_loaded = True
+        if Secret is None:
+            self.web_view.load_uri("https://www.roblox.com/home")
+            return
+
+        try:
+            saved_session = Secret.password_lookup_sync(
+                ROBLOX_SESSION_SCHEMA,
+                ROBLOX_SESSION_ATTRIBUTES,
+                None,
+            )
+        except GLib.Error as error:
+            self.show_discover_message(
+                f"Could not read your encrypted Roblox session: {error.message}"
+            )
+            self.web_view.load_uri("https://www.roblox.com/home")
+            return
+        if not saved_session:
+            self.web_view.load_uri("https://www.roblox.com/home")
+            return
+
+        try:
+            session_cookies = json.loads(saved_session)
+            if not isinstance(session_cookies, list) or len(session_cookies) > 8:
+                raise ValueError("The saved session cookie data is invalid.")
+            cookies = [
+                self.restore_session_cookie(item) for item in session_cookies
+            ]
+        except (json.JSONDecodeError, TypeError, ValueError) as error:
+            self.show_discover_message(
+                f"Could not restore your encrypted Roblox session: {error}"
+            )
+            self.web_view.load_uri("https://www.roblox.com/home")
+            return
+
+        self.cookie_restore_pending = len(cookies)
+        self.cookie_restore_errors = []
+        if not cookies:
+            self.web_view.load_uri("https://www.roblox.com/home")
+            return
+        for cookie in cookies:
+            self.web_cookie_manager.add_cookie(
+                cookie, None, self.on_session_cookie_restored, None
+            )
+
+    @staticmethod
+    def restore_session_cookie(item):
+        if not isinstance(item, dict):
+            raise ValueError("The saved session cookie data is invalid.")
+        name = item.get("name")
+        value = item.get("value")
+        domain = item.get("domain")
+        path = item.get("path")
+        normalized_domain = (
+            domain.lstrip(".").casefold() if isinstance(domain, str) else ""
+        )
+        if (
+            name != ROBLOX_SESSION_COOKIE
+            or not isinstance(value, str)
+            or not value
+            or len(value) > 8192
+            or normalized_domain != "roblox.com"
+            or not isinstance(path, str)
+            or not path.startswith("/")
+            or len(path) > 2048
+        ):
+            raise ValueError("The saved Roblox session cookie is invalid.")
+
+        cookie = Soup.Cookie.new(name, value, domain, path, -1)
+        cookie.set_secure(bool(item.get("secure", True)))
+        cookie.set_http_only(bool(item.get("http_only", True)))
+        same_site = item.get("same_site")
+        if isinstance(same_site, int) and same_site in (0, 1, 2):
+            cookie.set_same_site_policy(Soup.SameSitePolicy(same_site))
+        return cookie
+
+    def on_session_cookie_restored(self, cookie_manager, result, _user_data):
+        try:
+            cookie_manager.add_cookie_finish(result)
+        except GLib.Error as error:
+            self.cookie_restore_errors.append(error.message)
+        self.cookie_restore_pending -= 1
+        if self.cookie_restore_pending:
+            return
+        if self.cookie_restore_errors:
+            self.show_discover_message(
+                "Could not restore the Roblox login cookie: "
+                + "; ".join(self.cookie_restore_errors)
+            )
+        self.web_view.load_uri("https://www.roblox.com/home")
+
+    def on_browser_cookies_changed(self, _cookie_manager):
+        if Secret is None or self.cookie_restore_pending:
+            return
+        if self.cookie_save_source:
+            GLib.source_remove(self.cookie_save_source)
+        self.cookie_save_source = GLib.timeout_add(
+            1200, self.snapshot_browser_session
+        )
+
+    def snapshot_browser_session(self):
+        self.cookie_save_source = 0
+        self.cookie_save_generation += 1
+        self.web_cookie_manager.get_all_cookies(
+            None,
+            self.on_browser_cookies_loaded,
+            self.cookie_save_generation,
+        )
+        return GLib.SOURCE_REMOVE
+
+    def on_browser_cookies_loaded(self, cookie_manager, result, generation):
+        try:
+            cookies = cookie_manager.get_all_cookies_finish(result)
+        except GLib.Error as error:
+            self.show_discover_message(
+                f"Could not save your Roblox login securely: {error.message}"
+            )
+            return
+
+        session_cookies = []
+        for cookie in cookies:
+            domain = cookie.get_domain()
+            normalized_domain = (
+                domain.lstrip(".").casefold() if domain else ""
+            )
+            if (
+                cookie.get_name() != ROBLOX_SESSION_COOKIE
+                or normalized_domain != "roblox.com"
+            ):
+                continue
+            same_site = cookie.get_same_site_policy()
+            session_cookies.append(
+                {
+                    "name": cookie.get_name(),
+                    "value": cookie.get_value(),
+                    "domain": domain,
+                    "path": cookie.get_path(),
+                    "secure": cookie.get_secure(),
+                    "http_only": cookie.get_http_only(),
+                    "same_site": int(same_site) if same_site is not None else None,
+                }
+            )
+        if len(session_cookies) > 8:
+            self.show_discover_message(
+                "Roblox returned an unexpected number of login cookies; "
+                "the session was not saved."
+            )
+            return
+
+        serialized_session = (
+            json.dumps(session_cookies, separators=(",", ":"))
+            if session_cookies
+            else None
+        )
+        threading.Thread(
+            target=self.store_browser_session,
+            args=(serialized_session, generation),
+            daemon=True,
+        ).start()
+
+    def store_browser_session(self, serialized_session, generation):
+        try:
+            with self.cookie_save_lock:
+                if generation != self.cookie_save_generation:
+                    return
+                if serialized_session is None:
+                    Secret.password_clear_sync(
+                        ROBLOX_SESSION_SCHEMA,
+                        ROBLOX_SESSION_ATTRIBUTES,
+                        None,
+                    )
+                else:
+                    stored = Secret.password_store_sync(
+                        ROBLOX_SESSION_SCHEMA,
+                        ROBLOX_SESSION_ATTRIBUTES,
+                        None,
+                        "Mactolinux Roblox session",
+                        serialized_session,
+                        None,
+                    )
+                    if not stored:
+                        raise RuntimeError(
+                            "The desktop keyring did not save the session."
+                        )
+        except (GLib.Error, RuntimeError) as error:
+            message = str(error)
+            GLib.idle_add(
+                self.show_discover_message,
+                f"Could not save your Roblox login securely: {message}",
+            )
+            return
+        if serialized_session is not None:
+            GLib.idle_add(
+                self.show_discover_message,
+                "Roblox login saved securely in your desktop keyring.",
+            )
+
+    def on_web_decide_policy(self, web_view, decision, decision_type):
+        if decision_type not in (
+            WebKit.PolicyDecisionType.NAVIGATION_ACTION,
+            WebKit.PolicyDecisionType.NEW_WINDOW_ACTION,
+        ):
+            return False
+
+        navigation_action = decision.get_navigation_action()
+        request = navigation_action.get_request()
+        uri = request.get_uri()
+        try:
+            scheme = urlsplit(uri).scheme.casefold()
+        except ValueError:
+            self.show_discover_message("Roblox requested an invalid game link.")
+            decision.ignore()
+            return True
+
+        if scheme in ("roblox-player", "roblox"):
+            try:
+                page_host = urlsplit(web_view.get_uri() or "").hostname
+            except ValueError:
+                page_host = None
+            if page_host != "roblox.com" and not (
+                page_host and page_host.endswith(".roblox.com")
+            ):
+                self.show_discover_message(
+                    "Only game links opened from the Roblox website can be launched."
+                )
+                decision.ignore()
+                return True
+            self.open_game_uri(uri)
+            decision.ignore()
+            return True
+
+        if decision_type == WebKit.PolicyDecisionType.NEW_WINDOW_ACTION:
+            if scheme in ("http", "https"):
+                web_view.load_uri(uri)
+            decision.ignore()
+            return True
+
+        return False
+
+    def open_game_uri(self, uri):
+        try:
+            scheme = urlsplit(uri).scheme.casefold()
+        except ValueError as error:
+            self.show_discover_message(f"Roblox sent an invalid game link: {error}")
+            return
+        if scheme not in ("roblox-player", "roblox"):
+            self.show_discover_message(
+                "The selected link is not a Roblox game launch link."
+            )
+            return
+        try:
+            started = self.play(None, uri)
+        except (OSError, ValueError, RuntimeError) as error:
+            self.show_discover_message(
+                f"Could not start this game with Mactolinux: {error}"
+            )
+            return
+        if not started:
+            self.show_discover_message(
+                "Mactolinux could not start the selected Roblox game."
+            )
+            return
+        self.show_discover_message("Starting this game with Mactolinux…")
+
+    def on_web_load_failed(self, _web_view, _event, _failing_uri, error):
+        self.show_discover_message(
+            f"Could not load the Roblox website: {error.message}"
+        )
+        return False
+
+    def show_discover_message(self, message):
+        if self.discover_status is not None:
+            self.discover_status.set_text(message)
+            self.discover_status.set_visible(True)
+
+    def build_discover_fallback(self, page, message):
+        fallback = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
+        fallback.add_css_class("discover-fallback")
+        fallback.set_valign(Gtk.Align.CENTER)
+        page.append(fallback)
+        fallback_title = self.label("Roblox Discover")
+        fallback_title.add_css_class("discover-fallback-title")
+        fallback.append(fallback_title)
+        fallback_copy = self.secondary_label(message, "page-copy")
+        fallback_copy.set_wrap(True)
+        fallback.append(fallback_copy)
+        open_website = Gtk.LinkButton(
+            uri="https://www.roblox.com/home",
+            label="Open Roblox website",
+        )
+        open_website.set_halign(Gtk.Align.START)
+        fallback.append(open_website)
 
     @staticmethod
     def label(text):
@@ -1082,6 +1509,7 @@ class RobloxLauncher(Gtk.Application):
         else:
             self.version_badge.set_text("Roblox client is not installed yet")
         self.play_button.set_sensitive(not self.job_running)
+        self.sidebar_play_button.set_sensitive(not self.job_running)
         self.terminate_button.set_sensitive(not self.job_running)
         self.update_button.set_sensitive(not self.job_running)
         self.launcher_update_button.set_sensitive(not self.job_running)
@@ -1504,16 +1932,18 @@ class RobloxLauncher(Gtk.Application):
         return GLib.SOURCE_REMOVE
 
     def start_update(
-        self, _button=None, launch_after_update=False, startup=False
+        self,
+        _button=None,
+        launch_after_update=False,
+        startup=False,
+        launch_uri=None,
     ):
         if self.job_running:
             return GLib.SOURCE_REMOVE
         self.job_running = True
         self.refresh_state()
         if startup:
-            self.navigation.set_sensitive(False)
             self.loading_spinner.start()
-            self.stack.set_visible_child_name("checking")
         self.status_title.set_text("Checking for updates")
         self.status_copy.set_text(
             "This can take a moment if a new client is available."
@@ -1535,6 +1965,7 @@ class RobloxLauncher(Gtk.Application):
                     str(error),
                     launch_after_update,
                     startup,
+                    launch_uri,
                 )
                 return
             GLib.idle_add(
@@ -1544,26 +1975,32 @@ class RobloxLauncher(Gtk.Application):
                 "",
                 launch_after_update,
                 startup,
+                launch_uri,
             )
 
         threading.Thread(target=worker, daemon=True).start()
         return GLib.SOURCE_REMOVE
 
     def finish_update(
-        self, succeeded, log_path, error, launch_after_update, startup
+        self,
+        succeeded,
+        log_path,
+        error,
+        launch_after_update,
+        startup,
+        launch_uri,
     ):
         self.job_running = False
         self.spinner.stop()
         if startup:
             self.loading_spinner.stop()
-            self.navigation.set_sensitive(True)
         self.refresh_state()
         if succeeded and (not launch_after_update or installation_complete()):
             self.status_title.set_text("Ready to play")
             self.status_copy.set_text("Roblox is installed and up to date.")
             self.status_icon.set_from_icon_name("emblem-ok-symbolic")
             if launch_after_update:
-                self.launch_client()
+                self.launch_client(launch_uri)
         else:
             self.status_title.set_text("Could not check or update Roblox")
             failure = error or (
@@ -1575,7 +2012,6 @@ class RobloxLauncher(Gtk.Application):
             )
             self.status_icon.set_from_icon_name("dialog-error-symbolic")
         if startup:
-            self.stack.set_visible_child_name("home")
             if not self.launcher_startup_check_started:
                 self.launcher_startup_check_started = True
                 GLib.idle_add(self.check_launcher_updates)
@@ -1595,7 +2031,8 @@ class RobloxLauncher(Gtk.Application):
                 "entire Mactolinux installation? Removing everything also "
                 "deletes DO_NOT_SHARE, your modifications folder, settings, "
                 "logs, the AppImage, launcher files, command, and "
-                "applications-menu entry."
+                "applications-menu entry, as well as your encrypted Roblox "
+                "session from the desktop keyring."
             ),
         )
         dialog.add_button("Remove Roblox only", Gtk.ResponseType.APPLY)
@@ -1615,6 +2052,22 @@ class RobloxLauncher(Gtk.Application):
         shortcut_path = desktop_shortcut_path()
 
         def worker():
+            if uninstall_mode == "everything" and Secret is not None:
+                try:
+                    Secret.password_clear_sync(
+                        ROBLOX_SESSION_SCHEMA,
+                        ROBLOX_SESSION_ATTRIBUTES,
+                        None,
+                    )
+                except GLib.Error as error:
+                    GLib.idle_add(
+                        self.finish_uninstall,
+                        False,
+                        "Could not remove the encrypted Roblox login from "
+                        f"your desktop keyring: {error.message}",
+                        uninstall_mode,
+                    )
+                    return
             try:
                 result = subprocess.run(
                     [
@@ -1658,7 +2111,7 @@ class RobloxLauncher(Gtk.Application):
                 self.status_title.set_text("Roblox has been uninstalled")
                 self.status_copy.set_text(
                     "The Roblox client and shaders were removed. Your saved "
-                    "login and settings are still in DO_NOT_SHARE."
+                    "encrypted login remains in the desktop keyring."
                 )
             self.status_icon.set_from_icon_name("emblem-ok-symbolic")
         else:
@@ -1666,12 +2119,12 @@ class RobloxLauncher(Gtk.Application):
             self.status_title.set_text("Could not uninstall Roblox")
             self.status_copy.set_text(details)
             self.status_icon.set_from_icon_name("dialog-error-symbolic")
-        self.stack.set_visible_child_name("home")
+        self.stack.set_visible_child_name("launcher")
         return GLib.SOURCE_REMOVE
 
-    def play(self, _button):
+    def play(self, _button, launch_uri=None):
         if self.job_running:
-            return
+            return False
         if not APPIMAGE.is_file() or not os.access(APPIMAGE, os.X_OK):
             self.status_title.set_text("Cannot reinstall Roblox")
             self.status_copy.set_text(
@@ -1679,20 +2132,26 @@ class RobloxLauncher(Gtk.Application):
                 "Restore it from the release archive, then click Play again."
             )
             self.status_icon.set_from_icon_name("dialog-error-symbolic")
-            return
+            return False
         if not installation_complete():
-            self.start_update(launch_after_update=True)
-            return
-        self.launch_client()
+            self.start_update(
+                launch_after_update=True,
+                launch_uri=launch_uri,
+            )
+            return True
+        return self.launch_client(launch_uri)
 
-    def launch_client(self):
+    def launch_client(self, launch_uri=None):
         try:
             if self.settings["modifications_enabled"]:
                 mods.apply_modifications()
             DATA.mkdir(mode=0o700, parents=True, exist_ok=True)
             os.chmod(DATA, 0o700)
+            command = ["sh", str(HERE / "launch.sh")]
+            if launch_uri is not None:
+                command.append(launch_uri)
             subprocess.Popen(
-                ["sh", str(HERE / "launch.sh")],
+                command,
                 cwd=HERE,
                 stdin=subprocess.DEVNULL,
                 stdout=subprocess.DEVNULL,
@@ -1700,14 +2159,15 @@ class RobloxLauncher(Gtk.Application):
                 start_new_session=True,
                 close_fds=True,
             )
-            self.window.minimize()
             self.status_title.set_text("Roblox is starting")
             self.status_copy.set_text(
                 "Launch progress is shown in the Roblox launch window."
             )
+            return True
         except (OSError, ValueError, RuntimeError) as error:
             self.status_title.set_text("Could not start Roblox")
             self.status_copy.set_text(str(error))
+            return False
 
 
 if __name__ == "__main__":
