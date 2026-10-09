@@ -1,11 +1,14 @@
 #!/usr/bin/env python3
 import json
+import math
 import os
+import re
 import shutil
 import signal
 import subprocess
 import tempfile
 import threading
+import time
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -356,6 +359,8 @@ class RobloxLauncher(Gtk.Application):
         self.running_monitor_started = False
         self.fullscreen_window_ids = {}
         self.fullscreen_warning_shown = False
+        self.display_scale_thread = None
+        self.display_scale_session_seen = False
         self.job_running = False
         self.play_button = None
         self.terminate_button = None
@@ -487,7 +492,7 @@ class RobloxLauncher(Gtk.Application):
             ("launcher", "Launcher", "applications-games-symbolic"),
             ("fflags", "FFlags & Mods", "applications-system-symbolic"),
             ("settings", "Settings", "preferences-system-symbolic"),
-            ("info", "About", "help-about-symbolic"),
+            ("info", "Info", "help-about-symbolic"),
             ("uninstall", "Uninstall", "user-trash-symbolic"),
         ):
             button = Gtk.Button()
@@ -731,6 +736,36 @@ class RobloxLauncher(Gtk.Application):
         )
         info_message.set_wrap(True)
         info_page.append(info_message)
+
+        display_scale_title = self.label("Automatic display scaling")
+        display_scale_title.add_css_class("heading")
+        info_page.append(display_scale_title)
+        display_scale_message = self.secondary_label(
+            "On KDE Plasma Wayland, Mactolinux switches your primary display "
+            "to 100% scaling before Roblox starts. This lets Roblox render "
+            "sharply on high-resolution displays and avoids changing the "
+            "camera window size during play. Your previous scale is restored "
+            "when Roblox exits.",
+            "page-copy",
+        )
+        display_scale_message.set_wrap(True)
+        info_page.append(display_scale_message)
+
+        display_scale_steps = self.secondary_label(
+            "How to use it\n"
+            "1. Open Mactolinux and choose Launcher → Play Roblox, or start "
+            "a game from Discover.\n"
+            "2. Your primary display changes to 100% while Roblox is running.\n"
+            "3. Keep Mactolinux running until you close Roblox; your previous "
+            "display scale is then restored automatically.\n\n"
+            "This automatic switch is available on KDE Plasma Wayland when "
+            "kscreen-doctor is installed. Other desktops and sessions are "
+            "left unchanged.",
+            "page-copy",
+        )
+        display_scale_steps.set_wrap(True)
+        info_page.append(display_scale_steps)
+
         info_links = Gtk.Box(
             orientation=Gtk.Orientation.HORIZONTAL, spacing=9
         )
@@ -1580,7 +1615,195 @@ class RobloxLauncher(Gtk.Application):
         self.terminate_button.set_visible(bool(sessions))
         self.terminate_button.set_sensitive(bool(sessions) and not self.job_running)
         self.update_roblox_fullscreen(set(processes))
+        self.update_roblox_display_scale(bool(processes))
         return GLib.SOURCE_CONTINUE
+
+    def update_roblox_display_scale(self, roblox_running):
+        if (
+            not roblox_running
+            and self.display_scale_thread is not None
+            and not self.display_scale_thread.is_alive()
+        ):
+            self.display_scale_thread = None
+            self.display_scale_session_seen = False
+
+    def prepare_roblox_display_scale(self):
+        if not os.environ.get("WAYLAND_DISPLAY") or not os.environ.get(
+            "KDE_SESSION_VERSION"
+        ):
+            return None
+        if shutil.which("kscreen-doctor") is None:
+            self.show_display_scale_message(
+                "Automatic display scaling needs KDE's kscreen-doctor command."
+            )
+            return None
+        if self.running_roblox_processes():
+            return None
+
+        display_name, original_scale = self.read_display_scale()
+        if math.isclose(original_scale, 1.0):
+            return None
+        try:
+            self.set_display_scale(display_name, 1.0)
+        except (OSError, RuntimeError, subprocess.TimeoutExpired):
+            self.restore_roblox_display_scale(display_name, original_scale)
+            raise
+        self.display_scale_session_seen = True
+        return display_name, original_scale
+
+    def start_roblox_display_scale_monitor(self, display_name, original_scale):
+        self.display_scale_thread = threading.Thread(
+            target=self.manage_roblox_display_scale,
+            args=(display_name, original_scale),
+            name="roblox-display-scale",
+        )
+        try:
+            self.display_scale_thread.start()
+            return True
+        except RuntimeError as error:
+            self.display_scale_thread = None
+            self.show_display_scale_warning(
+                f"Could not start automatic display scaling: {error}"
+            )
+            self.restore_roblox_display_scale(display_name, original_scale)
+            return False
+
+    @staticmethod
+    def read_display_scale(output_name=None):
+        result = subprocess.run(
+            ["kscreen-doctor", "--json"],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        if result.returncode != 0:
+            details = result.stderr.strip() or "kscreen-doctor returned an error."
+            raise RuntimeError(f"Could not inspect display scaling: {details}")
+        try:
+            outputs = json.loads(result.stdout)["outputs"]
+        except (json.JSONDecodeError, KeyError, TypeError) as error:
+            raise RuntimeError(
+                f"Could not read KDE display information: {error}"
+            ) from error
+        if not isinstance(outputs, list):
+            raise RuntimeError("KDE returned an invalid display list.")
+
+        output = next(
+            (
+                candidate
+                for candidate in outputs
+                if isinstance(candidate, dict)
+                and candidate.get("connected") is True
+                and (
+                    candidate.get("name") == output_name
+                    or (
+                        output_name is None
+                        and candidate.get("enabled") is True
+                        and candidate.get("priority") == 1
+                    )
+                )
+            ),
+            None,
+        )
+        if output is None:
+            message = (
+                f"KDE no longer reports the {output_name} display."
+                if output_name is not None
+                else "KDE did not report an enabled primary display."
+            )
+            raise RuntimeError(message)
+        name = output.get("name")
+        scale = output.get("scale")
+        if (
+            not isinstance(name, str)
+            or re.fullmatch(r"[A-Za-z0-9_.-]+", name) is None
+            or isinstance(scale, bool)
+            or not isinstance(scale, (int, float))
+            or not math.isfinite(scale)
+            or scale <= 0
+        ):
+            raise RuntimeError("KDE returned invalid primary display settings.")
+        return name, float(scale)
+
+    @staticmethod
+    def set_display_scale(name, scale):
+        if re.fullmatch(r"[A-Za-z0-9_.-]+", name) is None:
+            raise RuntimeError("KDE returned an invalid display name.")
+        result = subprocess.run(
+            [
+                "kscreen-doctor",
+                f"output.{name}.scale.{scale:.15g}",
+            ],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        if result.returncode != 0:
+            details = result.stderr.strip() or "kscreen-doctor returned an error."
+            raise RuntimeError(f"Could not change display scaling: {details}")
+        _, actual_scale = RobloxLauncher.read_display_scale(name)
+        if not math.isclose(actual_scale, scale):
+            raise RuntimeError(
+                f"KDE left {name} at {actual_scale * 100:g}% scaling instead "
+                f"of {scale * 100:g}%."
+            )
+
+    def manage_roblox_display_scale(self, display_name, original_scale):
+        GLib.idle_add(
+            self.show_display_scale_message,
+            f"Roblox is starting; {display_name} is at 100% scaling. "
+            "Your previous scale will be restored when Roblox exits.",
+        )
+        launch_deadline = time.monotonic() + 120
+        player_started = bool(self.running_roblox_processes())
+        while not player_started and time.monotonic() < launch_deadline:
+            time.sleep(1)
+            player_started = bool(self.running_roblox_processes())
+        while self.running_roblox_processes():
+            time.sleep(1)
+        self.restore_roblox_display_scale(display_name, original_scale)
+        if not player_started:
+            GLib.idle_add(
+                self.show_display_scale_warning,
+                "Roblox did not start within two minutes; the original display "
+                "scale was restored.",
+            )
+
+    def restore_roblox_display_scale(self, display_name, original_scale):
+        try:
+            _, current_scale = self.read_display_scale(display_name)
+            if math.isclose(current_scale, 1.0):
+                self.set_display_scale(display_name, original_scale)
+                GLib.idle_add(
+                    self.show_display_scale_message,
+                    f"Roblox exited; restored {display_name} to "
+                    f"{original_scale * 100:g}% scaling.",
+                )
+            else:
+                GLib.idle_add(
+                    self.show_display_scale_message,
+                    "The display scale changed while Roblox was running; "
+                    "leaving your new setting unchanged.",
+                )
+        except (OSError, RuntimeError, subprocess.TimeoutExpired) as error:
+            GLib.idle_add(
+                self.show_display_scale_warning,
+                f"Could not restore display scaling after Roblox exited: {error}",
+            )
+
+    def show_display_scale_message(self, message):
+        self.status_title.set_text("Roblox display scaling")
+        self.status_copy.set_text(message)
+        self.status_icon.set_from_icon_name("dialog-information-symbolic")
+        return GLib.SOURCE_REMOVE
+
+    def show_display_scale_warning(self, message):
+        self.status_title.set_text("Display scaling needs attention")
+        self.status_copy.set_text(message)
+        self.status_icon.set_from_icon_name("dialog-warning-symbolic")
+        return GLib.SOURCE_REMOVE
 
     def update_roblox_fullscreen(self, player_pids):
         if not player_pids:
@@ -2142,11 +2365,14 @@ class RobloxLauncher(Gtk.Application):
         return self.launch_client(launch_uri)
 
     def launch_client(self, launch_uri=None):
+        display_scale = None
+        display_scale_monitor_started = False
         try:
             if self.settings["modifications_enabled"]:
                 mods.apply_modifications()
             DATA.mkdir(mode=0o700, parents=True, exist_ok=True)
             os.chmod(DATA, 0o700)
+            display_scale = self.prepare_roblox_display_scale()
             command = ["sh", str(HERE / "launch.sh")]
             if launch_uri is not None:
                 command.append(launch_uri)
@@ -2159,12 +2385,19 @@ class RobloxLauncher(Gtk.Application):
                 start_new_session=True,
                 close_fds=True,
             )
+            if display_scale is not None:
+                display_scale_monitor_started = (
+                    self.start_roblox_display_scale_monitor(*display_scale)
+                )
             self.status_title.set_text("Roblox is starting")
             self.status_copy.set_text(
                 "Launch progress is shown in the Roblox launch window."
             )
             return True
         except (OSError, ValueError, RuntimeError) as error:
+            if display_scale is not None and not display_scale_monitor_started:
+                self.restore_roblox_display_scale(*display_scale)
+                self.display_scale_session_seen = False
             self.status_title.set_text("Could not start Roblox")
             self.status_copy.set_text(str(error))
             return False
