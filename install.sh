@@ -10,21 +10,30 @@ COMMIT_URL="https://api.github.com/repos/$OWNER/$REPOSITORY/commits/$BRANCH"
 
 if [ -t 1 ] && [ -z "${NO_COLOR:-}" ]; then
     BOLD=$(printf '\033[1m')
+    DIM=$(printf '\033[2m')
     BLUE=$(printf '\033[34m')
+    CYAN=$(printf '\033[36m')
     GREEN=$(printf '\033[32m')
     RED=$(printf '\033[31m')
     RESET=$(printf '\033[0m')
 else
     BOLD=""
+    DIM=""
     BLUE=""
+    CYAN=""
     GREEN=""
     RED=""
     RESET=""
 fi
 
 banner() {
-    printf '\n%s%sMactolinux%s\n' "$BOLD" "$BLUE" "$RESET"
-    printf '  Roblox on Linux, ready to play.\n\n'
+    printf '\n%s%s' "$CYAN" "$BOLD"
+    printf '  ╭──────────────────────────────────────────────╮\n'
+    printf '  │             M A C T O L I N U X              │\n'
+    printf '  │          ROBLOX ON LINUX · X86-64            │\n'
+    printf '  ╰──────────────────────────────────────────────╯%s\n' "$RESET"
+    printf '  Play the macOS Roblox client on your Linux desktop.\n'
+    printf '  %sA simple, user-only setup. No sudo required.%s\n\n' "$DIM" "$RESET"
 }
 
 step() {
@@ -51,22 +60,21 @@ confirm_install() {
         fail "Run this installer from a terminal so you can choose an option and confirm with y."
     fi
 
-    printf '╭────────────────────────────────────────────╮\n'
-    printf '│  %sMactolinux Installer%s                      │\n' "$BOLD" "$RESET"
-    printf '│  Roblox on Linux, ready to play.           │\n'
-    printf '├────────────────────────────────────────────┤\n'
-    printf '│  Install or update for your user:          │\n'
-    printf '│  %s\n' "$INSTALL_DIR"
-    printf '├────────────────────────────────────────────┤\n'
-    printf '│  [1] Install                               │\n'
-    printf '│  [2] Update                                │\n'
-    printf '│  [3] Cancel                                │\n'
-    printf '╰────────────────────────────────────────────╯\n'
+    printf '%s╭──────────────────────────────────────────────────╮%s\n' "$BLUE" "$RESET"
+    printf '│%14s%sWelcome to Mactolinux%s%15s│\n' '' "$BOLD" "$RESET" ''
+    printf '│  %-48s│\n' 'Setup · choose an action'
+    printf '├──────────────────────────────────────────────────┤\n'
+    printf '│  %-48s│\n' 'Install  Set up the launcher and Roblox client'
+    printf '│  %-48s│\n' 'Update   Refresh launcher files; keep your data'
+    printf '│  %-48s│\n' 'Quit     Leave everything unchanged'
+    printf '╰──────────────────────────────────────────────────╯\n'
+    printf '\n%s❯%s [1] Install     [2] Update     [3] Quit\n' "$CYAN" "$RESET"
     printf '\nChoose an option [1-3]: '
     IFS= read -r choice </dev/tty || cancel_install
     case "$choice" in
         1|i|I|install|Install) install_mode=install ;;
         2|u|U|update|Update) install_mode=update ;;
+        3|q|Q|quit|Quit) cancel_install ;;
         *) cancel_install ;;
     esac
 
