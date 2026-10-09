@@ -1,0 +1,6 @@
+# Never commit or share your Roblox session, settings, logs or caches.
+DO_NOT_SHARE/
+
+# The complete runnable bundle is distributed through GitHub Releases.
+*.AppImage
+/RobloxVersion/
