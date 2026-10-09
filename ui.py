@@ -1,8 +1,6 @@
 #!/usr/bin/env python3
-import fcntl
 import json
 import os
-import shutil
 import signal
 import subprocess
 import tempfile
@@ -226,6 +224,7 @@ class RobloxLauncher(Gtk.Application):
         )
         self.window = None
         self.stack = None
+        self.navigation = None
         self.startup_check_started = False
         self.running_monitor_started = False
         self.job_running = False
@@ -282,7 +281,7 @@ class RobloxLauncher(Gtk.Application):
             GLib.timeout_add_seconds(2, self.refresh_running_state)
         if self.settings["check_updates_on_startup"] and not self.startup_check_started:
             self.startup_check_started = True
-            GLib.idle_add(self.start_update)
+            GLib.idle_add(self.startup_update)
 
     def build_window(self):
         display = Gdk.Display.get_default()
@@ -301,24 +300,26 @@ class RobloxLauncher(Gtk.Application):
         title.add_css_class("title")
         header.set_title_widget(title)
 
-        navigation = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=4)
-        navigation.add_css_class("nav")
-        header.pack_start(navigation)
+        self.navigation = Gtk.Box(
+            orientation=Gtk.Orientation.HORIZONTAL, spacing=4
+        )
+        self.navigation.add_css_class("nav")
+        header.pack_start(self.navigation)
         home_button = Gtk.Button(label="Home")
         home_button.connect("clicked", self.show_page, "home")
-        navigation.append(home_button)
+        self.navigation.append(home_button)
         fflags_button = Gtk.Button(label="FFlags")
         fflags_button.connect("clicked", self.show_page, "fflags")
-        navigation.append(fflags_button)
+        self.navigation.append(fflags_button)
         settings_button = Gtk.Button(label="Settings")
         settings_button.connect("clicked", self.show_page, "settings")
-        navigation.append(settings_button)
+        self.navigation.append(settings_button)
         info_button = Gtk.Button(label="Info")
         info_button.connect("clicked", self.show_page, "info")
-        navigation.append(info_button)
+        self.navigation.append(info_button)
         uninstall_button = Gtk.Button(label="Uninstall")
         uninstall_button.connect("clicked", self.show_page, "uninstall")
-        navigation.append(uninstall_button)
+        self.navigation.append(uninstall_button)
 
         self.stack = Gtk.Stack()
         self.stack.set_transition_type(Gtk.StackTransitionType.CROSSFADE)
@@ -472,6 +473,35 @@ class RobloxLauncher(Gtk.Application):
         )
         info_message.set_wrap(True)
         info_page.append(info_message)
+
+        checking_page = Gtk.Box(
+            orientation=Gtk.Orientation.VERTICAL, spacing=16
+        )
+        checking_page.add_css_class("content")
+        checking_page.set_valign(Gtk.Align.CENTER)
+        self.stack.add_named(checking_page, "checking")
+        checking_card = Gtk.Box(
+            orientation=Gtk.Orientation.VERTICAL, spacing=12
+        )
+        checking_card.add_css_class("intro")
+        checking_card.set_halign(Gtk.Align.FILL)
+        checking_page.append(checking_card)
+        self.loading_spinner = Gtk.Spinner()
+        self.loading_spinner.set_size_request(42, 42)
+        self.loading_spinner.set_halign(Gtk.Align.CENTER)
+        checking_card.append(self.loading_spinner)
+        self.loading_title = self.label("Checking for Roblox updates")
+        self.loading_title.add_css_class("page-title")
+        self.loading_title.set_halign(Gtk.Align.CENTER)
+        checking_card.append(self.loading_title)
+        self.loading_copy = self.secondary_label(
+            "This may take a moment. Your launcher menu will appear when the "
+            "check is complete.",
+            "page-copy",
+        )
+        self.loading_copy.set_halign(Gtk.Align.CENTER)
+        self.loading_copy.set_wrap(True)
+        checking_card.append(self.loading_copy)
 
     def apply_theme(self, theme):
         self.theme_provider.load_from_data(THEMES[theme] + CSS)
@@ -907,11 +937,20 @@ class RobloxLauncher(Gtk.Application):
             self.status_copy.set_text(str(error))
             self.status_icon.set_from_icon_name("dialog-error-symbolic")
 
-    def start_update(self, _button=None, launch_after_update=False):
+    def startup_update(self):
+        return self.start_update(startup=True)
+
+    def start_update(
+        self, _button=None, launch_after_update=False, startup=False
+    ):
         if self.job_running:
             return GLib.SOURCE_REMOVE
         self.job_running = True
         self.refresh_state()
+        if startup:
+            self.navigation.set_sensitive(False)
+            self.loading_spinner.start()
+            self.stack.set_visible_child_name("checking")
         self.status_title.set_text("Checking for updates")
         self.status_copy.set_text(
             "This can take a moment if a new client is available."
@@ -932,6 +971,7 @@ class RobloxLauncher(Gtk.Application):
                     log_path,
                     str(error),
                     launch_after_update,
+                    startup,
                 )
                 return
             GLib.idle_add(
@@ -940,16 +980,20 @@ class RobloxLauncher(Gtk.Application):
                 log_path,
                 "",
                 launch_after_update,
+                startup,
             )
 
         threading.Thread(target=worker, daemon=True).start()
         return GLib.SOURCE_REMOVE
 
     def finish_update(
-        self, succeeded, log_path, error, launch_after_update
+        self, succeeded, log_path, error, launch_after_update, startup
     ):
         self.job_running = False
         self.spinner.stop()
+        if startup:
+            self.loading_spinner.stop()
+            self.navigation.set_sensitive(True)
         self.refresh_state()
         if succeeded and (not launch_after_update or installation_complete()):
             self.status_title.set_text("Ready to play")
@@ -967,6 +1011,8 @@ class RobloxLauncher(Gtk.Application):
                 f"{failure} Log: {log_path.relative_to(HERE)}"
             )
             self.status_icon.set_from_icon_name("dialog-error-symbolic")
+        if startup:
+            self.stack.set_visible_child_name("home")
         return GLib.SOURCE_REMOVE
 
     def confirm_uninstall(self, _button):
@@ -991,49 +1037,53 @@ class RobloxLauncher(Gtk.Application):
         dialog.destroy()
         if response != Gtk.ResponseType.ACCEPT:
             return
-        lock_path = DATA / "instance.lock"
-        try:
-            DATA.mkdir(mode=0o700, parents=True, exist_ok=True)
-            os.chmod(DATA, 0o700)
-            with lock_path.open("a", encoding="utf-8") as lock:
-                try:
-                    fcntl.flock(lock.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-                except BlockingIOError:
-                    self.status_title.set_text("Roblox is currently running")
-                    self.status_copy.set_text(
-                        "Close Roblox before uninstalling it."
-                    )
-                    self.status_icon.set_from_icon_name("dialog-warning-symbolic")
-                    self.stack.set_visible_child_name("home")
-                    return
-                shortcut_path = desktop_shortcut_path()
-                shortcut_removed = False
-                if shortcut_path.is_file():
-                    contents = shortcut_path.read_text(encoding="utf-8")
-                    if DESKTOP_SHORTCUT_MARKER in contents:
-                        shortcut_path.unlink()
-                        shortcut_removed = True
-                if (HERE / "RobloxVersion").exists():
-                    shutil.rmtree(HERE / "RobloxVersion")
-                self.refresh_state()
-                self.status_title.set_text("Roblox has been uninstalled")
-                if shortcut_removed:
-                    self.status_copy.set_text(
-                        "The desktop shortcut was removed. Your saved login "
-                        "and settings are still in DO_NOT_SHARE."
-                    )
-                else:
-                    self.status_copy.set_text(
-                        "Your saved login and settings are still in "
-                        "DO_NOT_SHARE."
-                    )
-                self.status_icon.set_from_icon_name("emblem-ok-symbolic")
-        except OSError as error:
-            self.refresh_state()
+        self.job_running = True
+        self.refresh_state()
+        shortcut_path = desktop_shortcut_path()
+
+        def worker():
+            try:
+                result = subprocess.run(
+                    [
+                        "sh",
+                        str(HERE / "uninstaller.sh"),
+                        str(shortcut_path),
+                    ],
+                    cwd=HERE,
+                    stdin=subprocess.DEVNULL,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    text=True,
+                    check=False,
+                )
+            except OSError as error:
+                GLib.idle_add(self.finish_uninstall, False, str(error))
+                return
+            GLib.idle_add(
+                self.finish_uninstall,
+                result.returncode == 0,
+                result.stdout,
+            )
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def finish_uninstall(self, succeeded, output):
+        self.job_running = False
+        self.refresh_state()
+        if succeeded:
+            self.status_title.set_text("Roblox has been uninstalled")
+            self.status_copy.set_text(
+                "The Roblox client and shaders were removed. Your saved login "
+                "and settings are still in DO_NOT_SHARE."
+            )
+            self.status_icon.set_from_icon_name("emblem-ok-symbolic")
+        else:
+            details = output.strip() or "The uninstaller returned an error."
             self.status_title.set_text("Could not uninstall Roblox")
-            self.status_copy.set_text(str(error))
+            self.status_copy.set_text(details)
             self.status_icon.set_from_icon_name("dialog-error-symbolic")
         self.stack.set_visible_child_name("home")
+        return GLib.SOURCE_REMOVE
 
     def play(self, _button):
         if self.job_running:

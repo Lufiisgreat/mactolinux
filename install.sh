@@ -6,7 +6,6 @@ REPOSITORY="mactolinux"
 BRANCH="main"
 RELEASE_ASSET="RobloxLinux.AppImage"
 SOURCE_URL="https://codeload.github.com/$OWNER/$REPOSITORY/tar.gz/refs/heads/$BRANCH"
-APPIMAGE_URL="https://github.com/$OWNER/$REPOSITORY/releases/latest/download/$RELEASE_ASSET"
 
 if [ -t 1 ] && [ -z "${NO_COLOR:-}" ]; then
     BOLD=$(printf '\033[1m')
@@ -38,6 +37,85 @@ success() {
 fail() {
     printf '\n%sError:%s %s\n\n' "$RED" "$RESET" "$1" >&2
     exit 1
+}
+
+cancel_install() {
+    printf '\nInstallation cancelled. No files were changed.\n'
+    exit 0
+}
+
+confirm_install() {
+    if [ ! -r /dev/tty ]; then
+        fail "Run this installer from a terminal so you can choose Install and confirm with y."
+    fi
+
+    printf '╭────────────────────────────────────────────╮\n'
+    printf '│  %sMactolinux Installer%s                      │\n' "$BOLD" "$RESET"
+    printf '│  Roblox on Linux, ready to play.           │\n'
+    printf '├────────────────────────────────────────────┤\n'
+    printf '│  Installs for your user (no sudo):         │\n'
+    printf '│  %s\n' "$INSTALL_DIR"
+    printf '├────────────────────────────────────────────┤\n'
+    printf '│  [1] Install                               │\n'
+    printf '│  [2] Cancel                                │\n'
+    printf '╰────────────────────────────────────────────╯\n'
+    printf '\nChoose an option [1-2]: '
+    IFS= read -r choice </dev/tty || cancel_install
+    case "$choice" in
+        1|i|I|install|Install) ;;
+        *) cancel_install ;;
+    esac
+
+    printf '\nThis will download launcher files from GitHub and install Mactolinux for your user.\n'
+    printf 'Confirm installation? Type y or no [y/no]: '
+    IFS= read -r confirmation </dev/tty || cancel_install
+    case "$confirmation" in
+        y|Y|yes|YES|Yes) ;;
+        n|N|no|NO|No) cancel_install ;;
+        *) cancel_install ;;
+    esac
+}
+
+read_appimage_path() {
+    printf '\nDrag and drop the downloaded %s file into this terminal, then press Enter.\n' "$RELEASE_ASSET"
+    printf 'AppImage path: '
+    appimage_path=$(python3 -c '
+import shlex
+import sys
+
+try:
+    paths = shlex.split(sys.stdin.read())
+except ValueError as error:
+    print(f"Could not read the dropped path: {error}", file=sys.stderr)
+    raise SystemExit(1)
+if len(paths) != 1 or "\n" in paths[0] or "\r" in paths[0]:
+    print("Drop one AppImage file path, then press Enter.", file=sys.stderr)
+    raise SystemExit(1)
+print(paths[0])
+' </dev/tty) || fail "Could not read the AppImage path."
+
+    [ -f "$appimage_path" ] ||
+        fail "That path is not a file. Run the installer again and drop the AppImage file."
+    python3 - "$appimage_path" <<'PY'
+import struct
+import sys
+
+try:
+    with open(sys.argv[1], "rb") as appimage:
+        header = appimage.read(20)
+except OSError as error:
+    print(f"Could not read the AppImage: {error}", file=sys.stderr)
+    raise SystemExit(1)
+
+if len(header) < 20 or header[:4] != b"\x7fELF":
+    print("The selected file is not a valid Linux AppImage (ELF file).", file=sys.stderr)
+    raise SystemExit(1)
+byte_order = "<" if header[5:6] == b"\x01" else ">" if header[5:6] == b"\x02" else None
+if byte_order is None or struct.unpack(f"{byte_order}H", header[18:20])[0] != 62:
+    print("The selected AppImage is not built for x86-64 Linux.", file=sys.stderr)
+    raise SystemExit(1)
+PY
+    [ -s "$appimage_path" ] || fail "The selected AppImage is empty."
 }
 
 banner
@@ -81,6 +159,9 @@ if [ -e "$DESKTOP_FILE" ] &&
     fail "Refusing to replace the existing desktop entry $DESKTOP_FILE."
 fi
 
+confirm_install
+read_appimage_path
+
 TEMP_DIR=$(mktemp -d "${TMPDIR:-/tmp}/mactolinux-install.XXXXXX") ||
     fail "Could not create a temporary download directory."
 cleanup() {
@@ -100,19 +181,10 @@ if ! tar -xzf "$TEMP_DIR/source.tar.gz" \
     fail "The downloaded source archive could not be extracted."
 fi
 
-for source_file in ui.py launch.py ui.sh launch.sh run.sh update-roblox.sh FFlags.json roblox-linux-release.png; do
+for source_file in ui.py launch.py ui.sh launch.sh run.sh update-roblox.sh uninstaller.sh FFlags.json roblox-linux-release.png; do
     [ -f "$TEMP_DIR/source/$source_file" ] ||
         fail "The source archive is missing $source_file."
 done
-
-step "Downloading the Roblox runtime"
-if ! curl --proto '=https' --proto-redir '=https' \
-    --fail --location --silent --show-error --retry 2 \
-    "$APPIMAGE_URL" -o "$TEMP_DIR/$RELEASE_ASSET"; then
-    fail "No AppImage was found in the latest GitHub Release. Publish a release with the asset named $RELEASE_ASSET, then try again."
-fi
-[ -s "$TEMP_DIR/$RELEASE_ASSET" ] ||
-    fail "The downloaded AppImage is empty."
 
 step "Installing to $INSTALL_DIR"
 mkdir -p "$INSTALL_DIR" "$BIN_DIR" "$APPLICATIONS_DIR"
@@ -124,11 +196,11 @@ for source_file in ui.py launch.py FFlags.json roblox-linux-release.png README.m
     install -m 644 "$TEMP_DIR/source/$source_file" "$INSTALL_DIR/$source_file"
 done
 
-for source_file in ui.sh launch.sh run.sh update-roblox.sh; do
+for source_file in ui.sh launch.sh run.sh update-roblox.sh uninstaller.sh; do
     install -m 755 "$TEMP_DIR/source/$source_file" "$INSTALL_DIR/$source_file"
 done
 
-install -m 755 "$TEMP_DIR/$RELEASE_ASSET" "$INSTALL_DIR/.RobloxLinux.AppImage.new"
+install -m 755 "$appimage_path" "$INSTALL_DIR/.RobloxLinux.AppImage.new"
 mv -f "$INSTALL_DIR/.RobloxLinux.AppImage.new" "$INSTALL_DIR/RobloxLinux.AppImage"
 
 ln -sfn "$INSTALL_DIR/ui.sh" "$BIN_LINK"
