@@ -5,6 +5,8 @@ import signal
 import subprocess
 import tempfile
 import threading
+import urllib.error
+import urllib.request
 from pathlib import Path
 
 import gi
@@ -20,6 +22,10 @@ CLIENT = HERE / "RobloxVersion/RobloxPlayer.app/Contents/MacOS/RobloxPlayer"
 VERSION_FILE = HERE / "RobloxVersion/.version"
 APPIMAGE = HERE / "RobloxLinux.AppImage"
 SETTINGS_FILE = DATA / "settings.json"
+LAUNCHER_VERSION_FILE = DATA / "launcher-version"
+LATEST_COMMIT_URL = (
+    "https://api.github.com/repos/Lufiisgreat/mactolinux/commits/main"
+)
 FFLAGS_FILE = HERE / "FFlags.json"
 TEXTURE_FLAGS = {
     "DFFlagTextureQualityOverrideEnabled",
@@ -231,6 +237,7 @@ class RobloxLauncher(Gtk.Application):
         self.play_button = None
         self.terminate_button = None
         self.update_button = None
+        self.launcher_update_button = None
         self.desktop_button = None
         self.remove_desktop_button = None
         self.uninstall_action = None
@@ -390,6 +397,11 @@ class RobloxLauncher(Gtk.Application):
             "Check for Roblox updates",
             self.start_update,
         )
+        self.launcher_update_button = self.action_button(
+            "software-update-available-symbolic",
+            "Check for Mactolinux updates",
+            self.check_launcher_updates,
+        )
 
         buttons = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=9)
         buttons.add_css_class("actions")
@@ -397,6 +409,13 @@ class RobloxLauncher(Gtk.Application):
         buttons.append(self.terminate_button)
         buttons.append(self.update_button)
         content.append(buttons)
+
+        launcher_update_row = Gtk.Box(
+            orientation=Gtk.Orientation.HORIZONTAL, spacing=9
+        )
+        launcher_update_row.add_css_class("actions")
+        launcher_update_row.append(self.launcher_update_button)
+        content.append(launcher_update_row)
 
         shortcut_buttons = Gtk.Box(
             orientation=Gtk.Orientation.HORIZONTAL, spacing=9
@@ -758,6 +777,7 @@ class RobloxLauncher(Gtk.Application):
         self.play_button.set_sensitive(not self.job_running)
         self.terminate_button.set_sensitive(not self.job_running)
         self.update_button.set_sensitive(not self.job_running)
+        self.launcher_update_button.set_sensitive(not self.job_running)
         self.desktop_button.set_sensitive(not self.job_running)
         self.remove_desktop_button.set_sensitive(not self.job_running)
         self.uninstall_action.set_sensitive(not self.job_running)
@@ -939,6 +959,94 @@ class RobloxLauncher(Gtk.Application):
     def startup_update(self):
         return self.start_update(startup=True)
 
+    def check_launcher_updates(self, _button):
+        if self.job_running:
+            return
+        self.job_running = True
+        self.refresh_state()
+        self.status_title.set_text("Checking for Mactolinux updates")
+        self.status_copy.set_text("Checking GitHub for the latest commit.")
+        self.status_icon.set_from_icon_name("content-loading-symbolic")
+        self.spinner.start()
+
+        def worker():
+            request = urllib.request.Request(
+                LATEST_COMMIT_URL,
+                headers={
+                    "Accept": "application/vnd.github+json",
+                    "User-Agent": "Mactolinux",
+                    "X-GitHub-Api-Version": "2022-11-28",
+                },
+            )
+            try:
+                with urllib.request.urlopen(request, timeout=15) as response:
+                    payload = json.load(response)
+                if not isinstance(payload, dict):
+                    raise ValueError("GitHub returned an invalid commit response.")
+                latest_commit = payload.get("sha")
+                if (
+                    not isinstance(latest_commit, str)
+                    or len(latest_commit) != 40
+                    or any(character not in "0123456789abcdef" for character in latest_commit)
+                ):
+                    raise ValueError("GitHub returned an invalid commit ID.")
+                try:
+                    installed_commit = LAUNCHER_VERSION_FILE.read_text(
+                        encoding="utf-8"
+                    ).strip()
+                except FileNotFoundError:
+                    installed_commit = ""
+                GLib.idle_add(
+                    self.finish_launcher_update_check,
+                    latest_commit,
+                    installed_commit,
+                    "",
+                )
+            except (
+                OSError,
+                urllib.error.URLError,
+                json.JSONDecodeError,
+                ValueError,
+            ) as error:
+                GLib.idle_add(
+                    self.finish_launcher_update_check, "", "", str(error)
+                )
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def finish_launcher_update_check(
+        self, latest_commit, installed_commit, error
+    ):
+        self.job_running = False
+        self.spinner.stop()
+        self.refresh_state()
+        if error:
+            self.status_title.set_text("Could not check Mactolinux updates")
+            self.status_copy.set_text(error)
+            self.status_icon.set_from_icon_name("dialog-error-symbolic")
+        elif not installed_commit:
+            self.status_title.set_text("Mactolinux update available")
+            self.status_copy.set_text(
+                "This installation has no saved commit ID. Use Update in the "
+                "installer once to sync with GitHub and enable future checks."
+            )
+            self.status_icon.set_from_icon_name("software-update-available-symbolic")
+        elif latest_commit == installed_commit:
+            self.status_title.set_text("Mactolinux is up to date")
+            self.status_copy.set_text(
+                f"You're using the latest launcher commit "
+                f"{latest_commit[:12]}."
+            )
+            self.status_icon.set_from_icon_name("emblem-ok-symbolic")
+        else:
+            self.status_title.set_text("Mactolinux update available")
+            self.status_copy.set_text(
+                f"GitHub has commit {latest_commit[:12]}. Run the installer "
+                "and choose Update to install the latest launcher."
+            )
+            self.status_icon.set_from_icon_name("software-update-available-symbolic")
+        return GLib.SOURCE_REMOVE
+
     def start_update(
         self, _button=None, launch_after_update=False, startup=False
     ):
@@ -1022,20 +1130,26 @@ class RobloxLauncher(Gtk.Application):
             modal=True,
             message_type=Gtk.MessageType.WARNING,
             buttons=Gtk.ButtonsType.CANCEL,
-            text="Uninstall Roblox?",
+            text="Choose what to uninstall",
             secondary_text=(
-                "The installed client, shaders and desktop shortcut will be "
-                "removed. Your saved login and settings will be kept."
+                "Remove only Roblox and its prepared shaders, or remove the "
+                "entire Mactolinux installation? Removing everything also "
+                "deletes DO_NOT_SHARE, settings, logs, the AppImage, launcher "
+                "files, command, and applications-menu entry."
             ),
         )
-        dialog.add_button("Uninstall", Gtk.ResponseType.ACCEPT)
+        dialog.add_button("Remove Roblox only", Gtk.ResponseType.APPLY)
+        dialog.add_button("Remove everything", Gtk.ResponseType.ACCEPT)
         dialog.connect("response", self.uninstall_response)
         dialog.present()
 
     def uninstall_response(self, dialog, response):
         dialog.destroy()
-        if response != Gtk.ResponseType.ACCEPT:
+        if response not in (Gtk.ResponseType.APPLY, Gtk.ResponseType.ACCEPT):
             return
+        uninstall_mode = (
+            "everything" if response == Gtk.ResponseType.ACCEPT else "roblox-only"
+        )
         self.job_running = True
         self.refresh_state()
         shortcut_path = desktop_shortcut_path()
@@ -1046,6 +1160,7 @@ class RobloxLauncher(Gtk.Application):
                     [
                         "sh",
                         str(HERE / "uninstaller.sh"),
+                        uninstall_mode,
                         str(shortcut_path),
                     ],
                     cwd=HERE,
@@ -1056,25 +1171,35 @@ class RobloxLauncher(Gtk.Application):
                     check=False,
                 )
             except OSError as error:
-                GLib.idle_add(self.finish_uninstall, False, str(error))
+                GLib.idle_add(
+                    self.finish_uninstall, False, str(error), uninstall_mode
+                )
                 return
             GLib.idle_add(
                 self.finish_uninstall,
                 result.returncode == 0,
                 result.stdout,
+                uninstall_mode,
             )
 
         threading.Thread(target=worker, daemon=True).start()
 
-    def finish_uninstall(self, succeeded, output):
+    def finish_uninstall(self, succeeded, output, uninstall_mode):
         self.job_running = False
         self.refresh_state()
         if succeeded:
-            self.status_title.set_text("Roblox has been uninstalled")
-            self.status_copy.set_text(
-                "The Roblox client and shaders were removed. Your saved login "
-                "and settings are still in DO_NOT_SHARE."
-            )
+            if uninstall_mode == "everything":
+                self.status_title.set_text("Mactolinux has been removed")
+                self.status_copy.set_text(
+                    "The launcher, Roblox client, application-menu entry, "
+                    "command, and saved data were removed."
+                )
+            else:
+                self.status_title.set_text("Roblox has been uninstalled")
+                self.status_copy.set_text(
+                    "The Roblox client and shaders were removed. Your saved "
+                    "login and settings are still in DO_NOT_SHARE."
+                )
             self.status_icon.set_from_icon_name("emblem-ok-symbolic")
         else:
             details = output.strip() or "The uninstaller returned an error."

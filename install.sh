@@ -6,6 +6,7 @@ REPOSITORY="mactolinux"
 BRANCH="main"
 RELEASE_ASSET="RobloxLinux.AppImage"
 SOURCE_URL="https://codeload.github.com/$OWNER/$REPOSITORY/tar.gz/refs/heads/$BRANCH"
+COMMIT_URL="https://api.github.com/repos/$OWNER/$REPOSITORY/commits/$BRANCH"
 
 if [ -t 1 ] && [ -z "${NO_COLOR:-}" ]; then
     BOLD=$(printf '\033[1m')
@@ -223,6 +224,34 @@ cleanup() {
 }
 trap cleanup EXIT HUP INT TERM
 
+step "Checking the latest Mactolinux commit"
+if ! curl --proto '=https' --proto-redir '=https' \
+    --fail --location --silent --show-error --retry 2 \
+    -H 'Accept: application/vnd.github+json' \
+    -H 'X-GitHub-Api-Version: 2022-11-28' \
+    "$COMMIT_URL" -o "$TEMP_DIR/commit.json"; then
+    fail "Could not check the latest Mactolinux commit on GitHub."
+fi
+COMMIT_SHA=$(python3 - "$TEMP_DIR/commit.json" <<'PY'
+import json
+import re
+import sys
+
+try:
+    with open(sys.argv[1], encoding="utf-8") as response:
+        sha = json.load(response)["sha"]
+except (OSError, KeyError, json.JSONDecodeError, TypeError) as error:
+    print(f"Could not read the latest commit from GitHub: {error}", file=sys.stderr)
+    raise SystemExit(1)
+
+if not isinstance(sha, str) or re.fullmatch(r"[0-9a-f]{40}", sha) is None:
+    print("GitHub returned an invalid commit ID.", file=sys.stderr)
+    raise SystemExit(1)
+print(sha)
+PY
+) || fail "Could not read the latest Mactolinux commit."
+SOURCE_URL="https://codeload.github.com/$OWNER/$REPOSITORY/tar.gz/$COMMIT_SHA"
+
 step "Downloading launcher files"
 if ! curl --proto '=https' --proto-redir '=https' \
     --fail --location --silent --show-error --retry 2 \
@@ -258,6 +287,11 @@ if [ "$install_mode" = install ]; then
     install -m 755 "$appimage_path" "$INSTALL_DIR/.RobloxLinux.AppImage.new"
     mv -f "$INSTALL_DIR/.RobloxLinux.AppImage.new" "$INSTALL_DIR/RobloxLinux.AppImage"
 fi
+
+mkdir -p "$INSTALL_DIR/DO_NOT_SHARE"
+chmod 700 "$INSTALL_DIR/DO_NOT_SHARE"
+printf '%s\n' "$COMMIT_SHA" > "$INSTALL_DIR/DO_NOT_SHARE/launcher-version"
+chmod 600 "$INSTALL_DIR/DO_NOT_SHARE/launcher-version"
 
 ln -sfn "$INSTALL_DIR/ui.sh" "$BIN_LINK"
 desktop_exec=$(printf '%s' "$INSTALL_DIR/ui.sh" |
