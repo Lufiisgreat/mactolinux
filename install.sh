@@ -40,34 +40,43 @@ fail() {
 }
 
 cancel_install() {
-    printf '\nInstallation cancelled. No files were changed.\n'
+    printf '\n%s cancelled. No files were changed.\n' \
+        "${install_mode:-Installation}"
     exit 0
 }
 
 confirm_install() {
     if [ ! -r /dev/tty ]; then
-        fail "Run this installer from a terminal so you can choose Install and confirm with y."
+        fail "Run this installer from a terminal so you can choose an option and confirm with y."
     fi
 
     printf '╭────────────────────────────────────────────╮\n'
     printf '│  %sMactolinux Installer%s                      │\n' "$BOLD" "$RESET"
     printf '│  Roblox on Linux, ready to play.           │\n'
     printf '├────────────────────────────────────────────┤\n'
-    printf '│  Installs for your user (no sudo):         │\n'
+    printf '│  Install or update for your user:          │\n'
     printf '│  %s\n' "$INSTALL_DIR"
     printf '├────────────────────────────────────────────┤\n'
     printf '│  [1] Install                               │\n'
-    printf '│  [2] Cancel                                │\n'
+    printf '│  [2] Update                                │\n'
+    printf '│  [3] Cancel                                │\n'
     printf '╰────────────────────────────────────────────╯\n'
-    printf '\nChoose an option [1-2]: '
+    printf '\nChoose an option [1-3]: '
     IFS= read -r choice </dev/tty || cancel_install
     case "$choice" in
-        1|i|I|install|Install) ;;
+        1|i|I|install|Install) install_mode=install ;;
+        2|u|U|update|Update) install_mode=update ;;
         *) cancel_install ;;
     esac
 
-    printf '\nThis will download launcher files from GitHub and install Mactolinux for your user.\n'
-    printf 'Confirm installation? Type y or no [y/no]: '
+    if [ "$install_mode" = update ]; then
+        [ -x "$INSTALL_DIR/RobloxLinux.AppImage" ] ||
+            fail "Mactolinux is not installed at $INSTALL_DIR. Choose Install first."
+        printf '\nThis will update Mactolinux launcher files and keep your Roblox runtime and settings.\n'
+    else
+        printf '\nThis will install Mactolinux for your user and set up the Roblox runtime.\n'
+    fi
+    printf 'Confirm %s? Type y or no [y/no]: ' "$install_mode"
     IFS= read -r confirmation </dev/tty || cancel_install
     case "$confirmation" in
         y|Y|yes|YES|Yes) ;;
@@ -203,7 +212,9 @@ if [ -e "$DESKTOP_FILE" ] &&
 fi
 
 confirm_install
-read_appimage_path
+if [ "$install_mode" = install ]; then
+    read_appimage_path
+fi
 
 TEMP_DIR=$(mktemp -d "${TMPDIR:-/tmp}/mactolinux-install.XXXXXX") ||
     fail "Could not create a temporary download directory."
@@ -243,8 +254,10 @@ for source_file in ui.sh launch.sh run.sh update-roblox.sh uninstaller.sh; do
     install -m 755 "$TEMP_DIR/source/$source_file" "$INSTALL_DIR/$source_file"
 done
 
-install -m 755 "$appimage_path" "$INSTALL_DIR/.RobloxLinux.AppImage.new"
-mv -f "$INSTALL_DIR/.RobloxLinux.AppImage.new" "$INSTALL_DIR/RobloxLinux.AppImage"
+if [ "$install_mode" = install ]; then
+    install -m 755 "$appimage_path" "$INSTALL_DIR/.RobloxLinux.AppImage.new"
+    mv -f "$INSTALL_DIR/.RobloxLinux.AppImage.new" "$INSTALL_DIR/RobloxLinux.AppImage"
+fi
 
 ln -sfn "$INSTALL_DIR/ui.sh" "$BIN_LINK"
 desktop_exec=$(printf '%s' "$INSTALL_DIR/ui.sh" |
@@ -262,7 +275,11 @@ X-Mactolinux-Managed=true
 EOF
 install -m 644 "$TEMP_DIR/mactolinux.desktop" "$DESKTOP_FILE"
 
-success "Mactolinux is installed."
+if [ "$install_mode" = update ]; then
+    success "Mactolinux update complete."
+else
+    success "Mactolinux installation complete."
+fi
 printf '\nOpen it from your applications menu, or run:\n\n'
 printf '  %smactolinux%s\n\n' "$BOLD" "$RESET"
 case ":${PATH:-}:" in

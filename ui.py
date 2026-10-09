@@ -387,7 +387,7 @@ class RobloxLauncher(Gtk.Application):
         self.terminate_button.set_visible(False)
         self.update_button = self.action_button(
             "software-update-available-symbolic",
-            "Check for updates",
+            "Check for Roblox updates",
             self.start_update,
         )
 
