@@ -17,5 +17,6 @@ unset APPIMAGE_TARGET_DIR
 export TMPDIR=$HERE/DO_NOT_SHARE/tmp TMP=$HERE/DO_NOT_SHARE/tmp TEMP=$HERE/DO_NOT_SHARE/tmp
 case "${1:-}" in
     --diagnose|--debug|--client-version|--download-client) exec "$HERE/RobloxLinux.AppImage" "$@";;
+    roblox-player:*|roblox:*) exec "$HERE/RobloxLinux.AppImage" "$@";;
     *) exec "$HERE/RobloxLinux.AppImage" --debug "$@";;
 esac
