@@ -22,21 +22,3 @@ Ubuntu or Debian, install these first if needed:
 sudo apt install python3 python3-gi gir1.2-gtk-4.0
 ```
 
-## Publish a release
-
-The AppImage is intentionally not stored in the Git repository. To make the
-installer available, create a GitHub Release and attach the x86-64 AppImage
-with this exact filename:
-
-```text
-RobloxLinux.AppImage
-```
-
-The installer downloads the launcher sources from the `main` branch and the
-AppImage from the latest GitHub Release.
-
-## Notes
-
-- This project is unofficial and is not affiliated with Roblox.
-- Roblox session data, settings, and logs stay in the local
-  `DO_NOT_SHARE` folder and should never be uploaded.
