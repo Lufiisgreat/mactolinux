@@ -234,6 +234,8 @@ class RobloxLauncher(Gtk.Application):
         self.update_button = None
         self.desktop_button = None
         self.remove_desktop_button = None
+        self.uninstall_action = None
+        self.uninstall_status = None
         self.status_title = None
         self.status_copy = None
         self.status_icon = None
@@ -440,11 +442,18 @@ class RobloxLauncher(Gtk.Application):
         )
         data_note.set_wrap(True)
         uninstall_page.append(data_note)
-        uninstall_action = Gtk.Button(label="Uninstall Roblox")
-        uninstall_action.add_css_class("danger")
-        uninstall_action.set_halign(Gtk.Align.START)
-        uninstall_action.connect("clicked", self.confirm_uninstall)
-        uninstall_page.append(uninstall_action)
+        self.uninstall_status = self.secondary_label(
+            "An update is running. Wait for it to finish before uninstalling.",
+            "page-copy",
+        )
+        self.uninstall_status.set_wrap(True)
+        self.uninstall_status.set_visible(False)
+        uninstall_page.append(self.uninstall_status)
+        self.uninstall_action = Gtk.Button(label="Uninstall Roblox")
+        self.uninstall_action.add_css_class("danger")
+        self.uninstall_action.set_halign(Gtk.Align.START)
+        self.uninstall_action.connect("clicked", self.confirm_uninstall)
+        uninstall_page.append(self.uninstall_action)
 
         self.build_fflags_page()
         self.build_settings_page()
@@ -684,8 +693,7 @@ class RobloxLauncher(Gtk.Application):
                 temporary_path.unlink()
 
     def show_page(self, _button, page_name):
-        if not self.job_running:
-            self.stack.set_visible_child_name(page_name)
+        self.stack.set_visible_child_name(page_name)
 
     @staticmethod
     def label(text):
@@ -723,6 +731,8 @@ class RobloxLauncher(Gtk.Application):
         self.update_button.set_sensitive(not self.job_running)
         self.desktop_button.set_sensitive(not self.job_running)
         self.remove_desktop_button.set_sensitive(not self.job_running)
+        self.uninstall_action.set_sensitive(not self.job_running)
+        self.uninstall_status.set_visible(self.job_running)
         if not self.job_running:
             if ready:
                 self.status_title.set_text("Ready to play")
