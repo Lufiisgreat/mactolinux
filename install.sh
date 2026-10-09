@@ -81,7 +81,8 @@ read_appimage_path() {
         if [ -f "$HOME/Downloads/$RELEASE_ASSET" ]; then
             printf '%s\n' "$HOME/Downloads/$RELEASE_ASSET"
         elif [ -d "$HOME/Downloads" ]; then
-            find "$HOME/Downloads" -type f -name "$RELEASE_ASSET" -print -quit
+            find "$HOME/Downloads" -type f -name "$RELEASE_ASSET" \
+                -print -quit 2>/dev/null || :
         fi
     }
 
