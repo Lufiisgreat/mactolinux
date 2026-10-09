@@ -300,12 +300,15 @@ desktop_exec=$(printf '%s' "$INSTALL_DIR/ui.sh" |
 cat > "$TEMP_DIR/mactolinux.desktop" <<EOF
 [Desktop Entry]
 Type=Application
-Name=roblox-linux-release
+Name=Mactolinux
+GenericName=Roblox launcher
 Comment=Play Roblox on Linux
 Exec=sh "$desktop_exec"
 Icon=$INSTALL_DIR/roblox-linux-release.png
+StartupWMClass=Mactolinux
 Terminal=false
 Categories=Game;
+Keywords=Roblox;Mactolinux;Game;
 X-Mactolinux-Managed=true
 EOF
 install -m 644 "$TEMP_DIR/mactolinux.desktop" "$DESKTOP_FILE"
