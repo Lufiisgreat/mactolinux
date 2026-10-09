@@ -45,22 +45,20 @@ window {
   color: @app_fg;
 }
 headerbar {
-  background: linear-gradient(180deg, @header_top, @header_bottom);
+  background: @header_top;
   border-bottom: 1px solid @border;
   box-shadow: none;
+  min-height: 44px;
 }
-headerbar button.titlebutton {
-  min-width: 36px;
-  min-height: 36px;
-  padding: 0;
-  margin: 0 3px;
-  border-radius: 50%;
+headerbar .title {
+  font-weight: 700;
 }
 button {
   background: @button_bg;
   color: @app_fg;
   border-color: @border;
-  transition: 100ms ease-out;
+  border-radius: 5px;
+  transition: 120ms ease-out;
 }
 button:hover {
   background: @button_hover;
@@ -72,37 +70,36 @@ button:checked {
   background: @button_selected;
 }
 .content {
-  padding: 26px 30px 22px;
+  padding: 28px 32px;
 }
 .intro {
-  background: linear-gradient(115deg, @intro_start 0%, @intro_end 100%);
-  border: 1px solid @intro_border;
-  border-radius: 14px;
-  padding: 23px 24px;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  padding: 8px 0 12px;
 }
 .intro-title {
-  font-size: 24px;
-  font-weight: 650;
+  font-size: 23px;
+  font-weight: 700;
 }
 .intro-copy {
   color: @secondary_fg;
-  font-size: 13px;
+  font-size: 14px;
 }
 .welcome-row {
   min-height: 52px;
 }
 .welcome-icon {
-  color: @secondary_fg;
-  background: @status_bg;
-  border: 1px solid @border;
-  border-radius: 12px;
-  padding: 10px;
+  color: @accent;
+  background: transparent;
+  border-radius: 0;
+  padding: 0;
 }
 .status {
-  background: @status_bg;
-  border: 1px solid @border;
-  border-radius: 10px;
-  padding: 14px 16px;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  padding: 8px 0;
 }
 .version {
   color: @secondary_fg;
@@ -110,74 +107,130 @@ button:checked {
 }
 .actions button {
   min-height: 40px;
-  padding: 0 13px;
-  border-radius: 8px;
+  padding: 0 16px;
 }
 button.suggested-action {
-  background: #596579;
+  background: @accent;
   color: #fff;
-  border-color: @suggested_border;
+  border-color: @accent;
+  font-weight: 700;
+  border-radius: 5px;
 }
 button.suggested-action:hover {
-  background: @suggested_hover;
+  background: @accent_hover;
+  border-color: @accent_hover;
+}
+switch:checked {
+  background-color: @accent;
 }
 .footer {
   color: @footer_fg;
   font-size: 11px;
 }
 .page-title {
-  font-size: 22px;
-  font-weight: 650;
+  font-size: 23px;
+  font-weight: 700;
 }
 .page-copy {
   color: @secondary_fg;
 }
-.nav button {
-  border-radius: 7px;
+.app-shell {
+  background: @app_bg;
+}
+.sidebar {
+  background: @sidebar_bg;
+  border-right: 1px solid @border;
+  padding: 18px 10px;
+  min-width: 190px;
+}
+.sidebar-brand {
+  padding: 4px 10px 16px;
+}
+.sidebar-brand-label {
+  font-size: 15px;
+  font-weight: 700;
+}
+.nav {
+  padding-top: 2px;
+}
+.nav button.nav-button {
+  min-height: 40px;
+  padding: 0 10px;
+  background: transparent;
+  border-color: transparent;
+  border-radius: 5px;
+  color: @secondary_fg;
+}
+.nav button.nav-button:hover {
+  background: @button_hover;
+  color: @app_fg;
+}
+.nav button.nav-button.selected {
+  background: @nav_selected;
+  color: @nav_selected_fg;
+  font-weight: 600;
+}
+.nav-button-content {
+  min-width: 150px;
+}
+.nav-button-content image {
+  margin-right: 5px;
+}
+.nav-button.selected image {
+  color: @accent;
+}
+.heading {
+  font-weight: 650;
+}
+separator {
+  background: @border;
 }
 .danger {
-  color: @danger_fg;
+  color: @secondary_fg;
+}
+.danger:hover {
+  color: @app_fg;
 }
 """
 
 THEMES = {
     "light": b"""
-@define-color app_bg #e8eaed;
-@define-color app_fg #24272d;
-@define-color header_top #f5f6f7;
-@define-color header_bottom #e4e6e9;
-@define-color border #d5d8dd;
-@define-color button_bg #f4f5f6;
-@define-color button_hover #e4e7eb;
-@define-color button_selected #d9dee5;
-@define-color intro_start #f5f6f7;
-@define-color intro_end #e5e7eb;
-@define-color intro_border #f9fafb;
-@define-color status_bg #f4f5f6;
-@define-color secondary_fg #646a73;
-@define-color footer_fg #747a83;
-@define-color suggested_border #505b6d;
-@define-color suggested_hover #4e596c;
-@define-color danger_fg #a22c2c;
+@define-color app_bg #ffffff;
+@define-color app_fg #191b1f;
+@define-color header_top #ffffff;
+@define-color border #e1e3e6;
+@define-color sidebar_bg #ffffff;
+@define-color button_bg #ffffff;
+@define-color button_hover #f2f3f5;
+@define-color button_selected #e9eaec;
+@define-color nav_selected #f0f1f3;
+@define-color nav_selected_fg #191b1f;
+@define-color intro_start #ffffff;
+@define-color intro_border #e1e3e6;
+@define-color status_bg #ffffff;
+@define-color secondary_fg #60656b;
+@define-color footer_fg #777d83;
+@define-color accent #335fff;
+@define-color accent_hover #244fe5;
 """,
     "dark": b"""
-@define-color app_bg #17191d;
-@define-color app_fg #edf0f4;
-@define-color header_top #25282e;
-@define-color header_bottom #1d2025;
-@define-color border #383d46;
-@define-color button_bg #292d34;
-@define-color button_hover #353a43;
-@define-color button_selected #424a57;
-@define-color intro_start #272b33;
-@define-color intro_end #1d2026;
-@define-color intro_border #353a43;
-@define-color status_bg #20242a;
-@define-color secondary_fg #b0b6c0;
-@define-color footer_fg #989faa;
-@define-color suggested_border #647a9e;
-@define-color suggested_hover #60779c;
-@define-color danger_fg #ff8585;
+@define-color app_bg #191a1b;
+@define-color app_fg #f7f7f8;
+@define-color header_top #191a1b;
+@define-color border #343638;
+@define-color sidebar_bg #191a1b;
+@define-color button_bg #242526;
+@define-color button_hover #303234;
+@define-color button_selected #3b3d3f;
+@define-color nav_selected #303234;
+@define-color nav_selected_fg #ffffff;
+@define-color intro_start #191a1b;
+@define-color intro_border #343638;
+@define-color status_bg #191a1b;
+@define-color secondary_fg #b0b4b8;
+@define-color footer_fg #858a8e;
+@define-color accent #6b91ff;
+@define-color accent_hover #527dff;
 """,
 }
 
@@ -189,13 +242,15 @@ def installed_version():
         return ""
 
 
-def installation_complete():
+def installation_complete(version=None):
+    if version is None:
+        version = installed_version()
     return (
         APPIMAGE.is_file()
         and os.access(APPIMAGE, os.X_OK)
         and CLIENT.is_file()
         and os.access(CLIENT, os.X_OK)
-        and bool(installed_version())
+        and bool(version)
         and (HERE / "RobloxVersion/spv-cache-v1/report.json").is_file()
     )
 
@@ -235,6 +290,7 @@ class RobloxLauncher(Gtk.Application):
         self.window = None
         self.stack = None
         self.navigation = None
+        self.navigation_buttons = {}
         self.startup_check_started = False
         self.launcher_startup_check_started = False
         self.running_monitor_started = False
@@ -323,7 +379,7 @@ class RobloxLauncher(Gtk.Application):
         )
 
         self.window = Gtk.ApplicationWindow(application=self, title=APP_NAME)
-        self.window.set_default_size(600, 490)
+        self.window.set_default_size(1020, 700)
 
         header = Gtk.HeaderBar()
         self.window.set_titlebar(header)
@@ -331,31 +387,66 @@ class RobloxLauncher(Gtk.Application):
         title.add_css_class("title")
         header.set_title_widget(title)
 
+        shell = Gtk.Box(
+            orientation=Gtk.Orientation.HORIZONTAL, spacing=0
+        )
+        shell.add_css_class("app-shell")
+        self.window.set_child(shell)
+
+        sidebar = Gtk.Box(
+            orientation=Gtk.Orientation.VERTICAL, spacing=10
+        )
+        sidebar.set_size_request(220, -1)
+        sidebar.add_css_class("sidebar")
+        shell.append(sidebar)
+
+        brand = Gtk.Box(
+            orientation=Gtk.Orientation.HORIZONTAL, spacing=10
+        )
+        brand.add_css_class("sidebar-brand")
+        sidebar.append(brand)
+        brand_icon = Gtk.Image.new_from_icon_name(
+            "applications-games-symbolic"
+        )
+        brand_icon.set_pixel_size(24)
+        brand.append(brand_icon)
+        brand_label = self.label(APP_NAME)
+        brand_label.add_css_class("sidebar-brand-label")
+        brand.append(brand_label)
+
         self.navigation = Gtk.Box(
-            orientation=Gtk.Orientation.HORIZONTAL, spacing=4
+            orientation=Gtk.Orientation.VERTICAL, spacing=4
         )
         self.navigation.add_css_class("nav")
-        header.pack_start(self.navigation)
-        home_button = Gtk.Button(label="Home")
-        home_button.connect("clicked", self.show_page, "home")
-        self.navigation.append(home_button)
-        fflags_button = Gtk.Button(label="FFlags")
-        fflags_button.connect("clicked", self.show_page, "fflags")
-        self.navigation.append(fflags_button)
-        settings_button = Gtk.Button(label="Settings")
-        settings_button.connect("clicked", self.show_page, "settings")
-        self.navigation.append(settings_button)
-        info_button = Gtk.Button(label="Info")
-        info_button.connect("clicked", self.show_page, "info")
-        self.navigation.append(info_button)
-        uninstall_button = Gtk.Button(label="Uninstall")
-        uninstall_button.connect("clicked", self.show_page, "uninstall")
-        self.navigation.append(uninstall_button)
+        sidebar.append(self.navigation)
+        for page_name, label, icon_name in (
+            ("home", "Home", "go-home-symbolic"),
+            ("fflags", "FFlags", "applications-system-symbolic"),
+            ("settings", "Settings", "preferences-system-symbolic"),
+            ("info", "Info", "help-about-symbolic"),
+            ("uninstall", "Uninstall", "user-trash-symbolic"),
+        ):
+            button = Gtk.Button()
+            button.add_css_class("nav-button")
+            if page_name == "home":
+                button.add_css_class("selected")
+            button.connect("clicked", self.show_page, page_name)
+            button_content = Gtk.Box(
+                orientation=Gtk.Orientation.HORIZONTAL, spacing=10
+            )
+            button_content.add_css_class("nav-button-content")
+            button_content.append(Gtk.Image.new_from_icon_name(icon_name))
+            button_content.append(Gtk.Label(label=label))
+            button.set_child(button_content)
+            self.navigation_buttons[page_name] = button
+            self.navigation.append(button)
 
         self.stack = Gtk.Stack()
+        self.stack.set_hexpand(True)
+        self.stack.set_vexpand(True)
         self.stack.set_transition_type(Gtk.StackTransitionType.CROSSFADE)
         self.stack.set_transition_duration(150)
-        self.window.set_child(self.stack)
+        shell.append(self.stack)
         self.apply_theme(self.settings["theme"])
 
         content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=18)
@@ -570,7 +661,10 @@ class RobloxLauncher(Gtk.Application):
     def apply_theme(self, theme):
         self.theme_provider.load_from_data(THEMES[theme] + CSS)
         Gtk.Settings.get_default().set_property(
-            "gtk-application-prefer-dark-theme", theme == "dark"
+            "gtk-interface-color-scheme",
+            Gtk.InterfaceColorScheme.DARK
+            if theme == "dark"
+            else Gtk.InterfaceColorScheme.LIGHT,
         )
 
     def save_settings(self):
@@ -947,6 +1041,11 @@ class RobloxLauncher(Gtk.Application):
 
     def show_page(self, _button, page_name):
         self.stack.set_visible_child_name(page_name)
+        for name, button in self.navigation_buttons.items():
+            if name == page_name:
+                button.add_css_class("selected")
+            else:
+                button.remove_css_class("selected")
 
     @staticmethod
     def label(text):
@@ -972,8 +1071,9 @@ class RobloxLauncher(Gtk.Application):
 
     def refresh_state(self):
         version = installed_version()
-        ready = installation_complete()
-        self.refresh_running_state()
+        ready = installation_complete(version)
+        processes = self.running_roblox_processes()
+        self.refresh_running_state(processes)
         if version:
             short_version = version.removeprefix("version-")
             self.version_badge.set_text(
@@ -989,7 +1089,7 @@ class RobloxLauncher(Gtk.Application):
         self.remove_desktop_button.set_sensitive(not self.job_running)
         self.uninstall_action.set_sensitive(not self.job_running)
         modifications_available = (
-            not self.job_running and not self.running_roblox_processes()
+            not self.job_running and not processes
         )
         self.modifications_switch.set_sensitive(modifications_available)
         self.modifications_button.set_sensitive(modifications_available)
@@ -1045,8 +1145,9 @@ class RobloxLauncher(Gtk.Application):
     def running_roblox_sessions():
         return set(RobloxLauncher.running_roblox_processes().values())
 
-    def refresh_running_state(self):
-        processes = self.running_roblox_processes()
+    def refresh_running_state(self, processes=None):
+        if processes is None:
+            processes = self.running_roblox_processes()
         sessions = set(processes.values())
         self.terminate_button.set_visible(bool(sessions))
         self.terminate_button.set_sensitive(bool(sessions) and not self.job_running)
