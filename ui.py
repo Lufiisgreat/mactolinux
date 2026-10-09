@@ -435,8 +435,12 @@ class RobloxLauncher(Gtk.Application):
             self.settings_error = f"Could not load settings: {error}"
 
     def do_activate(self):
+        is_first_activation = self.window is None
         if self.window is None:
             self.build_window()
+        if is_first_activation:
+            self.window.unmaximize()
+            self.window.unfullscreen()
         self.refresh_state()
         self.window.present()
         if not self.running_monitor_started:
@@ -458,7 +462,7 @@ class RobloxLauncher(Gtk.Application):
         )
 
         self.window = Gtk.ApplicationWindow(application=self, title=APP_NAME)
-        self.window.set_default_size(1200, 760)
+        self.window.set_default_size(850, 560)
 
         header = Gtk.HeaderBar()
         self.window.set_titlebar(header)
@@ -841,8 +845,6 @@ class RobloxLauncher(Gtk.Application):
             if theme == "dark"
             else Gtk.InterfaceColorScheme.LIGHT,
         )
-        if self.web_view is not None and self.discover_loaded:
-            self.web_view.reload()
 
     def save_settings(self):
         temporary_path = None
@@ -1581,6 +1583,7 @@ class RobloxLauncher(Gtk.Application):
         label = Gtk.Label(label=text)
         label.add_css_class(style)
         label.set_xalign(0)
+        label.set_wrap(True)
         return label
 
     def action_button(self, icon_name, title, callback):
