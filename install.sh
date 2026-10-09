@@ -77,9 +77,24 @@ confirm_install() {
 }
 
 read_appimage_path() {
-    printf '\nDrag and drop the downloaded %s file into this terminal, then press Enter.\n' "$RELEASE_ASSET"
-    printf 'AppImage path: '
-    appimage_path=$(python3 -c '
+    appimage_path=
+    if [ -d "$HOME/Downloads" ]; then
+        if [ -f "$HOME/Downloads/$RELEASE_ASSET" ]; then
+            appimage_path="$HOME/Downloads/$RELEASE_ASSET"
+        else
+            appimage_path=$(find "$HOME/Downloads" -type f \
+                -name "$RELEASE_ASSET" -print -quit)
+        fi
+    fi
+
+    if [ -n "$appimage_path" ]; then
+        printf '\nFound %s in Downloads:\n  %s\n' \
+            "$RELEASE_ASSET" "$appimage_path"
+    else
+        printf '\nCould not find %s in ~/Downloads.\n' "$RELEASE_ASSET"
+        printf 'Enter its path or drag and drop the file into this terminal, then press Enter.\n'
+        printf 'AppImage path: '
+        appimage_path=$(python3 -c '
 import shlex
 import sys
 
@@ -93,9 +108,10 @@ if len(paths) != 1 or "\n" in paths[0] or "\r" in paths[0]:
     raise SystemExit(1)
 print(paths[0])
 ' </dev/tty) || fail "Could not read the AppImage path."
+    fi
 
     [ -f "$appimage_path" ] ||
-        fail "That path is not a file. Run the installer again and drop the AppImage file."
+        fail "That path is not a file. Run the installer again and provide the AppImage file."
     python3 - "$appimage_path" <<'PY'
 import struct
 import sys
@@ -135,7 +151,7 @@ case "$(uname -m)" in
     *) fail "Mactolinux currently supports x86-64 Linux only." ;;
 esac
 
-for command_name in curl tar python3 install mktemp readlink grep sed; do
+for command_name in curl tar python3 install mktemp readlink grep sed find; do
     command -v "$command_name" >/dev/null 2>&1 ||
         fail "Required command '$command_name' was not found."
 done
