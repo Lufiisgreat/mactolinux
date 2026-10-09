@@ -410,18 +410,19 @@ class RobloxLauncher(Gtk.Application):
                 modifications_enabled = saved_settings.get(
                     "modifications_enabled", False
                 )
-                if theme not in THEMES:
-                    raise ValueError("The saved theme must be 'light' or 'dark'.")
-                if not isinstance(check_updates, bool):
-                    raise ValueError("The startup update setting must be a boolean.")
                 if (
                     isinstance(display_scale, bool)
                     or not isinstance(display_scale, (int, float))
                     or display_scale not in ROBLOX_DISPLAY_SCALES
                 ):
-                    raise ValueError(
-                        "The Roblox display scale must be 100%, 150%, 175%, or 200%."
+                    display_scale = 1.0
+                    self.settings_error = (
+                        "The saved Roblox display scale was invalid; using 100%."
                     )
+                if theme not in THEMES:
+                    raise ValueError("The saved theme must be 'light' or 'dark'.")
+                if not isinstance(check_updates, bool):
+                    raise ValueError("The startup update setting must be a boolean.")
                 if not isinstance(modifications_enabled, bool):
                     raise ValueError("The modifications setting must be a boolean.")
                 self.settings.update(
@@ -757,7 +758,8 @@ class RobloxLauncher(Gtk.Application):
             "to the scale selected in Settings before Roblox starts. This "
             "lets Roblox render sharply on high-resolution displays and "
             "avoids changing the camera window size during play. Your "
-            "previous scale is restored when Roblox exits.",
+            "previous scale is restored when Roblox exits unless you change "
+            "the display scale yourself while Roblox is running.",
             "page-copy",
         )
         display_scale_message.set_wrap(True)
@@ -769,7 +771,8 @@ class RobloxLauncher(Gtk.Application):
             "applies the next time Roblox starts.\n"
             "2. Choose Launcher → Play Roblox, or start a game from Discover.\n"
             "3. Keep Mactolinux running until you close Roblox; your previous "
-            "display scale is then restored automatically.\n\n"
+            "display scale is then restored automatically unless you changed "
+            "it yourself during play.\n\n"
             "This automatic switch is available on KDE Plasma Wayland when "
             "kscreen-doctor is installed. Other desktops and sessions are "
             "left unchanged.",
@@ -838,6 +841,8 @@ class RobloxLauncher(Gtk.Application):
             if theme == "dark"
             else Gtk.InterfaceColorScheme.LIGHT,
         )
+        if self.web_view is not None and self.discover_loaded:
+            self.web_view.reload()
 
     def save_settings(self):
         temporary_path = None
@@ -877,7 +882,10 @@ class RobloxLauncher(Gtk.Application):
         selected = dropdown.get_selected()
         if selected >= len(ROBLOX_DISPLAY_SCALES):
             return
-        self.settings["roblox_display_scale"] = ROBLOX_DISPLAY_SCALES[selected]
+        scale = ROBLOX_DISPLAY_SCALES[selected]
+        if scale == self.settings["roblox_display_scale"]:
+            return
+        self.settings["roblox_display_scale"] = scale
         self.save_settings()
 
     def build_settings_page(self):
@@ -937,7 +945,7 @@ class RobloxLauncher(Gtk.Application):
         )
         update_row.append(self.startup_updates_switch)
 
-        display_heading = self.label("Roblox display scaling")
+        display_heading = self.label("Display")
         display_heading.add_css_class("heading")
         page.append(display_heading)
         display_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
@@ -945,20 +953,25 @@ class RobloxLauncher(Gtk.Application):
         display_text = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=3)
         display_text.set_hexpand(True)
         display_row.append(display_text)
-        display_text.append(self.label("Scale while Roblox runs"))
+        display_text.append(self.label("Display scale while Roblox runs"))
         display_text.append(
             self.secondary_label(
-                "Choose the display scale used before Roblox starts. Your "
-                "previous scale is restored after it exits; changes apply "
-                "the next time Roblox starts.",
+                "Temporarily changes your primary display scale before Roblox "
+                "starts and restores it when Roblox exits, unless you change "
+                "the scale manually during play. Changes apply the next time "
+                "Roblox starts. KDE Plasma Wayland only.",
                 "page-copy",
             )
         )
         display_scale_dropdown = Gtk.DropDown.new_from_strings(
-            ["100%", "150%", "175%", "200%"]
+            [f"{scale * 100:g}%" for scale in ROBLOX_DISPLAY_SCALES]
         )
         display_scale_dropdown.set_selected(
             ROBLOX_DISPLAY_SCALES.index(self.settings["roblox_display_scale"])
+        )
+        display_scale_dropdown.set_valign(Gtk.Align.CENTER)
+        display_scale_dropdown.set_tooltip_text(
+            "Temporarily set the primary display scale while Roblox runs"
         )
         display_scale_dropdown.connect(
             "notify::selected", self.on_roblox_display_scale_changed
