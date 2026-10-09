@@ -33,6 +33,7 @@ TEXTURE_FLAGS = {
 }
 DESKTOP_FILE_NAME = "roblox-linux-release.desktop"
 DESKTOP_SHORTCUT_MARKER = "X-RobloxLinuxRelease=true"
+APP_NAME = "roblox-linux-release"
 
 
 CSS = b"""
@@ -232,6 +233,7 @@ class RobloxLauncher(Gtk.Application):
         self.stack = None
         self.navigation = None
         self.startup_check_started = False
+        self.launcher_startup_check_started = False
         self.running_monitor_started = False
         self.job_running = False
         self.play_button = None
@@ -289,6 +291,9 @@ class RobloxLauncher(Gtk.Application):
         if self.settings["check_updates_on_startup"] and not self.startup_check_started:
             self.startup_check_started = True
             GLib.idle_add(self.startup_update)
+        elif not self.launcher_startup_check_started:
+            self.launcher_startup_check_started = True
+            GLib.idle_add(self.check_launcher_updates)
 
     def build_window(self):
         display = Gdk.Display.get_default()
@@ -298,12 +303,12 @@ class RobloxLauncher(Gtk.Application):
             display, self.theme_provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
         )
 
-        self.window = Gtk.ApplicationWindow(application=self, title="Mactolinux")
+        self.window = Gtk.ApplicationWindow(application=self, title=APP_NAME)
         self.window.set_default_size(600, 490)
 
         header = Gtk.HeaderBar()
         self.window.set_titlebar(header)
-        title = Gtk.Label(label="Mactolinux")
+        title = Gtk.Label(label=APP_NAME)
         title.add_css_class("title")
         header.set_title_widget(title)
 
@@ -915,8 +920,8 @@ class RobloxLauncher(Gtk.Application):
             desktop_entry = (
                 "[Desktop Entry]\n"
                 "Type=Application\n"
-                "Name=Mactolinux\n"
-                "Comment=Open Mactolinux\n"
+                f"Name={APP_NAME}\n"
+                f"Comment=Open {APP_NAME}\n"
                 f"Exec=sh {quote_desktop_exec_argument(str(launcher_script))}\n"
                 f"Icon={HERE / 'roblox-linux-release.png'}\n"
                 "Terminal=false\n"
@@ -981,9 +986,9 @@ class RobloxLauncher(Gtk.Application):
     def startup_update(self):
         return self.start_update(startup=True)
 
-    def check_launcher_updates(self, _button):
+    def check_launcher_updates(self, _button=None):
         if self.job_running:
-            return
+            return GLib.SOURCE_REMOVE
         self.job_running = True
         self.refresh_state()
         self.status_title.set_text("Checking for Mactolinux updates")
@@ -1031,14 +1036,16 @@ class RobloxLauncher(Gtk.Application):
                 ValueError,
             ) as error:
                 GLib.idle_add(
-                    self.finish_launcher_update_check, "", "", str(error)
+                    self.finish_launcher_update_check,
+                    "",
+                    "",
+                    str(error),
                 )
 
         threading.Thread(target=worker, daemon=True).start()
+        return GLib.SOURCE_REMOVE
 
-    def finish_launcher_update_check(
-        self, latest_commit, installed_commit, error
-    ):
+    def finish_launcher_update_check(self, latest_commit, installed_commit, error):
         self.job_running = False
         self.spinner.stop()
         self.refresh_state()
@@ -1142,6 +1149,9 @@ class RobloxLauncher(Gtk.Application):
             self.status_icon.set_from_icon_name("dialog-error-symbolic")
         if startup:
             self.stack.set_visible_child_name("home")
+            if not self.launcher_startup_check_started:
+                self.launcher_startup_check_started = True
+                GLib.idle_add(self.check_launcher_updates)
         return GLib.SOURCE_REMOVE
 
     def confirm_uninstall(self, _button):
