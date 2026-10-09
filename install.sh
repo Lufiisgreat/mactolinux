@@ -200,7 +200,8 @@ if ! python3 -c 'import gi; gi.require_version("Gtk", "4.0"); from gi.repository
     exit 1
 fi
 
-DESKTOP_FILE="$APPLICATIONS_DIR/mactolinux.desktop"
+DESKTOP_FILE="$APPLICATIONS_DIR/com.robloxlinux.release.desktop"
+LEGACY_DESKTOP_FILE="$APPLICATIONS_DIR/mactolinux.desktop"
 BIN_LINK="$BIN_DIR/mactolinux"
 if [ -e "$BIN_LINK" ] || [ -L "$BIN_LINK" ]; then
     if [ ! -L "$BIN_LINK" ] || [ "$(readlink "$BIN_LINK")" != "$INSTALL_DIR/ui.sh" ]; then
@@ -264,7 +265,7 @@ if ! tar -xzf "$TEMP_DIR/source.tar.gz" \
     fail "The downloaded source archive could not be extracted."
 fi
 
-for source_file in ui.py launch.py ui.sh launch.sh run.sh update-roblox.sh uninstaller.sh FFlags.json roblox-linux-release.png; do
+for source_file in ui.py launch.py mods.py ui.sh launch.sh run.sh update-roblox.sh uninstaller.sh FFlags.json roblox-linux-release.png; do
     [ -f "$TEMP_DIR/source/$source_file" ] ||
         fail "The source archive is missing $source_file."
 done
@@ -272,7 +273,7 @@ done
 step "Installing to $INSTALL_DIR"
 mkdir -p "$INSTALL_DIR" "$BIN_DIR" "$APPLICATIONS_DIR"
 
-for source_file in ui.py launch.py FFlags.json roblox-linux-release.png README.md; do
+for source_file in ui.py launch.py mods.py FFlags.json roblox-linux-release.png README.md; do
     if [ "$source_file" = "FFlags.json" ] && [ -e "$INSTALL_DIR/FFlags.json" ]; then
         continue
     fi
@@ -299,7 +300,7 @@ desktop_exec=$(printf '%s' "$INSTALL_DIR/ui.sh" |
 cat > "$TEMP_DIR/mactolinux.desktop" <<EOF
 [Desktop Entry]
 Type=Application
-Name=Mactolinux
+Name=roblox-linux-release
 Comment=Play Roblox on Linux
 Exec=sh "$desktop_exec"
 Icon=$INSTALL_DIR/roblox-linux-release.png
@@ -308,6 +309,10 @@ Categories=Game;
 X-Mactolinux-Managed=true
 EOF
 install -m 644 "$TEMP_DIR/mactolinux.desktop" "$DESKTOP_FILE"
+if [ -f "$LEGACY_DESKTOP_FILE" ] &&
+   grep -Fqx 'X-Mactolinux-Managed=true' "$LEGACY_DESKTOP_FILE"; then
+    rm -- "$LEGACY_DESKTOP_FILE"
+fi
 
 if [ "$install_mode" = update ]; then
     success "Mactolinux update complete."

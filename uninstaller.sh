@@ -5,7 +5,9 @@ umask 077
 HERE=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 DATA=$HERE/DO_NOT_SHARE
 DESKTOP_SHORTCUT_MARKER="X-RobloxLinuxRelease=true"
-APP_MENU_FILE="${XDG_DATA_HOME:-"$HOME/.local/share"}/applications/mactolinux.desktop"
+APPLICATIONS_DIR="${XDG_DATA_HOME:-"$HOME/.local/share"}/applications"
+APP_MENU_FILE="$APPLICATIONS_DIR/com.robloxlinux.release.desktop"
+LEGACY_APP_MENU_FILE="$APPLICATIONS_DIR/mactolinux.desktop"
 COMMAND_LINK="$HOME/.local/bin/mactolinux"
 
 if [ "$#" -ne 2 ]; then
@@ -41,6 +43,10 @@ if ! flock -n 9; then
     exit 1
 fi
 
+if [ -f "$DATA/modifications-manifest.json" ]; then
+    python3 "$HERE/mods.py" reset --quiet
+fi
+
 if [ -f "$shortcut_path" ] &&
    grep -Fqx "$DESKTOP_SHORTCUT_MARKER" "$shortcut_path"; then
     rm -- "$shortcut_path"
@@ -61,6 +67,11 @@ if [ -f "$APP_MENU_FILE" ] &&
     rm -- "$APP_MENU_FILE"
     echo "Removed the Mactolinux applications-menu entry."
 fi
+if [ -f "$LEGACY_APP_MENU_FILE" ] &&
+   grep -Fqx 'X-Mactolinux-Managed=true' "$LEGACY_APP_MENU_FILE"; then
+    rm -- "$LEGACY_APP_MENU_FILE"
+    echo "Removed the legacy Mactolinux applications-menu entry."
+fi
 
 if [ -L "$COMMAND_LINK" ] &&
    [ "$(readlink "$COMMAND_LINK")" = "$HERE/ui.sh" ]; then
@@ -69,7 +80,7 @@ if [ -L "$COMMAND_LINK" ] &&
 fi
 
 for file in \
-    FFlags.json README.md install.sh launch.py launch.sh \
+    FFlags.json README.md install.sh launch.py launch.sh mods.py \
     roblox-linux-release.png run.sh ui.py ui.sh update-roblox.sh \
     uninstaller.sh RobloxLinux.AppImage .RobloxLinux.AppImage.new; do
     if [ -f "$HERE/$file" ] || [ -L "$HERE/$file" ]; then
@@ -77,7 +88,7 @@ for file in \
     fi
 done
 
-for directory in RobloxVersion DO_NOT_SHARE; do
+for directory in RobloxVersion DO_NOT_SHARE modifications; do
     if [ -e "$HERE/$directory" ] || [ -L "$HERE/$directory" ]; then
         rm -rf -- "$HERE/$directory"
     fi

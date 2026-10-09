@@ -25,21 +25,43 @@ Choose **Update** here to refresh Mactolinux itself. The launcher's
 The Home page has separate update checks: **Check for Roblox updates** updates
 the Roblox client, while **Check for Mactolinux updates** checks GitHub for a
 new launcher commit. To install a newer launcher commit, run the installer
-again and choose **Update**.
+again and choose **Update**. Mactolinux also checks for a newer launcher
+commit every time it starts; this check does not install updates automatically.
 
 The launcher requires Python 3, GTK 4, and Python GObject introspection. On
-Ubuntu or Debian, install these first if needed:
+CachyOS, install the required packages with:
 
 ```sh
-sudo apt install python3 python3-gi gir1.2-gtk-4.0
+sudo pacman -S python gtk4 python-gobject wmctrl
 ```
+
+On Ubuntu or Debian, install them with:
+
+```sh
+sudo apt install python3 python3-gi gir1.2-gtk-4.0 wmctrl
+```
+
+`wmctrl` lets the launcher fullscreen Roblox while its player process is
+running and restore the window when it exits. In KDE Plasma Wayland, this
+requires Roblox to run as an XWayland window; native Wayland windows may not
+be controllable by `wmctrl`.
+
+The FFlags page also has a user modifications folder. Put replacement files
+there with directory paths matching their locations inside
+`RobloxVersion/RobloxPlayer.app`, then enable the folder or choose **Apply mods
+now**. Modded files are backed up and can be restored with **Reset all mods to
+default**. The launcher restores modifications before Roblox updates and
+applies them again the next time you play if they are enabled. Close Roblox
+before applying or resetting modifications. These are file replacements, not
+FastFlags, and the launcher does not include sound, cursor, or font assets.
 
 The AppImage does not need to be attached to a GitHub Release. Keep the
 downloaded file in `~/Downloads` or provide its path when the installer asks.
 
 The Uninstall tab lets you remove just the Roblox client and shaders while
-keeping saved data, or remove the full Mactolinux installation, including
-`DO_NOT_SHARE`, launcher files, desktop-menu entry, and command.
+keeping saved data and modification files, or remove the full Mactolinux
+installation, including `DO_NOT_SHARE`, modification files, launcher files,
+desktop-menu entry, and command.
 
 ## Notes
 

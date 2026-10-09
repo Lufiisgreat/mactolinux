@@ -20,6 +20,9 @@ flock -n 9 || { echo 'Close Roblox before updating.' >&2; exit 1; }
 # Serialize updates for this release folder.
 exec 8<"$HERE"
 flock -n 8 || { echo 'An update is already running.' >&2; exit 1; }
+if [ -f "$DATA/modifications-manifest.json" ]; then
+    python3 "$HERE/mods.py" reset --quiet
+fi
 version=$(sh "$HERE/run.sh" --client-version)
 # Extract-and-run may print filesystem progress before the application's output.
 version=$(printf '%s\n' "$version" | sed -n '/^version-[0-9a-f][0-9a-f]*$/p')

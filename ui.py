@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import json
 import os
+import shutil
 import signal
 import subprocess
 import tempfile
@@ -14,6 +15,8 @@ import gi
 gi.require_version("Gtk", "4.0")
 gi.require_version("Gdk", "4.0")
 from gi.repository import Gdk, Gio, GLib, Gtk
+
+import mods
 
 
 HERE = Path(__file__).resolve().parent
@@ -235,6 +238,8 @@ class RobloxLauncher(Gtk.Application):
         self.startup_check_started = False
         self.launcher_startup_check_started = False
         self.running_monitor_started = False
+        self.fullscreen_window_ids = {}
+        self.fullscreen_warning_shown = False
         self.job_running = False
         self.play_button = None
         self.terminate_button = None
@@ -252,6 +257,7 @@ class RobloxLauncher(Gtk.Application):
         self.settings = {
             "theme": "dark",
             "check_updates_on_startup": True,
+            "modifications_enabled": False,
         }
         self.settings_error = ""
         self.settings_status = None
@@ -262,6 +268,12 @@ class RobloxLauncher(Gtk.Application):
         self.fflag_status = None
         self.fflag_values = {}
         self.fflag_error = ""
+        self.modifications_switch = None
+        self.modifications_switch_handler = None
+        self.modifications_status = None
+        self.modifications_button = None
+        self.apply_modifications_button = None
+        self.reset_modifications_button = None
 
         try:
             if SETTINGS_FILE.exists():
@@ -270,12 +282,19 @@ class RobloxLauncher(Gtk.Application):
                     raise ValueError("Settings must be a JSON object.")
                 theme = saved_settings.get("theme", "dark")
                 check_updates = saved_settings.get("check_updates_on_startup", True)
+                modifications_enabled = saved_settings.get(
+                    "modifications_enabled", False
+                )
                 if theme not in THEMES:
                     raise ValueError("The saved theme must be 'light' or 'dark'.")
                 if not isinstance(check_updates, bool):
                     raise ValueError("The startup update setting must be a boolean.")
+                if not isinstance(modifications_enabled, bool):
+                    raise ValueError("The modifications setting must be a boolean.")
                 self.settings.update(
-                    theme=theme, check_updates_on_startup=check_updates
+                    theme=theme,
+                    check_updates_on_startup=check_updates,
+                    modifications_enabled=modifications_enabled,
                 )
         except (OSError, json.JSONDecodeError, ValueError) as error:
             self.settings_error = f"Could not load settings: {error}"
@@ -732,6 +751,70 @@ class RobloxLauncher(Gtk.Application):
             self.fflag_enabled_switch.set_sensitive(False)
             self.fflag_quality_dropdown.set_sensitive(False)
 
+        modifications_heading = self.label("User modifications")
+        modifications_heading.add_css_class("heading")
+        page.append(modifications_heading)
+        modifications_row = Gtk.Box(
+            orientation=Gtk.Orientation.HORIZONTAL, spacing=12
+        )
+        page.append(modifications_row)
+        modifications_text = Gtk.Box(
+            orientation=Gtk.Orientation.VERTICAL, spacing=3
+        )
+        modifications_text.set_hexpand(True)
+        modifications_row.append(modifications_text)
+        modifications_text.append(self.label("Enable modifications folder"))
+        modifications_text.append(
+            self.secondary_label(
+                "Overlay files from modifications/ onto Roblox when you play. "
+                "Keep the same paths they have inside RobloxPlayer.app.",
+                "page-copy",
+            )
+        )
+        self.modifications_switch = Gtk.Switch()
+        self.modifications_switch.set_valign(Gtk.Align.CENTER)
+        self.modifications_switch.set_active(
+            self.settings["modifications_enabled"]
+        )
+        self.modifications_switch_handler = self.modifications_switch.connect(
+            "notify::active", self.on_modifications_toggled
+        )
+        modifications_row.append(self.modifications_switch)
+
+        folder_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
+        page.append(folder_row)
+        folder_text = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=3)
+        folder_text.set_hexpand(True)
+        folder_row.append(folder_text)
+        folder_text.append(self.label("Open modifications folder"))
+        folder_text.append(
+            self.secondary_label(
+                "Put replacement files here using paths relative to RobloxPlayer.app.",
+                "page-copy",
+            )
+        )
+        self.modifications_button = Gtk.Button(label="Open")
+        self.modifications_button.connect(
+            "clicked", self.open_modifications_folder
+        )
+        folder_row.append(self.modifications_button)
+
+        self.apply_modifications_button = Gtk.Button(label="Apply mods now")
+        self.apply_modifications_button.connect(
+            "clicked", self.apply_modifications
+        )
+        page.append(self.apply_modifications_button)
+        self.reset_modifications_button = Gtk.Button(
+            label="Reset all mods to default"
+        )
+        self.reset_modifications_button.connect(
+            "clicked", self.reset_modifications
+        )
+        page.append(self.reset_modifications_button)
+        self.modifications_status = self.secondary_label("", "page-copy")
+        self.modifications_status.set_wrap(True)
+        page.append(self.modifications_status)
+
     def on_fflag_changed(self, *_args):
         self.fflag_quality_dropdown.set_sensitive(
             self.fflag_enabled_switch.get_active() and not self.fflag_error
@@ -766,6 +849,101 @@ class RobloxLauncher(Gtk.Application):
         finally:
             if temporary_path and temporary_path.exists():
                 temporary_path.unlink()
+
+    def on_modifications_toggled(self, switch, *_args):
+        if self.job_running or self.running_roblox_processes():
+            self.set_modifications_switch(not switch.get_active())
+            self.modifications_status.set_text(
+                "Close Roblox before changing client modifications."
+            )
+            return
+
+        enabled = switch.get_active()
+        try:
+            if enabled:
+                applied_count = mods.apply_modifications()
+                self.modifications_status.set_text(
+                    f"Applied {applied_count} modification file(s)."
+                    if applied_count
+                    else "Folder enabled; there are no files to apply yet."
+                )
+            else:
+                mods.reset_modifications()
+                self.modifications_status.set_text(
+                    "Roblox client files are back to their defaults."
+                )
+        except (OSError, ValueError, RuntimeError) as error:
+            self.set_modifications_switch(not enabled)
+            self.modifications_status.set_text(
+                f"Could not change modifications: {error}"
+            )
+            return
+
+        self.settings["modifications_enabled"] = enabled
+        self.save_settings()
+
+    def set_modifications_switch(self, enabled):
+        self.modifications_switch.handler_block(self.modifications_switch_handler)
+        try:
+            self.modifications_switch.set_active(enabled)
+        finally:
+            self.modifications_switch.handler_unblock(
+                self.modifications_switch_handler
+            )
+
+    def open_modifications_folder(self, _button):
+        try:
+            mods.MODIFICATIONS.mkdir(mode=0o700, parents=True, exist_ok=True)
+            if not Gio.AppInfo.launch_default_for_uri(
+                mods.MODIFICATIONS.as_uri(), None
+            ):
+                raise OSError("No file manager is available for this folder.")
+        except (OSError, GLib.Error) as error:
+            self.modifications_status.set_text(
+                f"Could not open modifications folder: {error}"
+            )
+
+    def apply_modifications(self, _button=None):
+        if self.job_running or self.running_roblox_processes():
+            self.modifications_status.set_text(
+                "Close Roblox before applying modifications."
+            )
+            return
+        try:
+            applied_count = mods.apply_modifications()
+        except (OSError, ValueError, RuntimeError) as error:
+            self.modifications_status.set_text(
+                f"Could not apply modifications: {error}"
+            )
+            return
+        self.set_modifications_switch(True)
+        self.settings["modifications_enabled"] = True
+        self.save_settings()
+        self.modifications_status.set_text(
+            f"Applied {applied_count} modification file(s)."
+            if applied_count
+            else "Folder enabled; there are no files to apply yet."
+        )
+
+    def reset_modifications(self, _button=None):
+        if self.job_running or self.running_roblox_processes():
+            self.modifications_status.set_text(
+                "Close Roblox before resetting modifications."
+            )
+            return
+        try:
+            mods.reset_modifications()
+        except (OSError, ValueError) as error:
+            self.modifications_status.set_text(
+                f"Could not reset modifications: {error}"
+            )
+            return
+        self.set_modifications_switch(False)
+        self.settings["modifications_enabled"] = False
+        self.save_settings()
+        self.modifications_status.set_text(
+            "Roblox client files are back to their defaults."
+        )
 
     def show_page(self, _button, page_name):
         self.stack.set_visible_child_name(page_name)
@@ -808,6 +986,13 @@ class RobloxLauncher(Gtk.Application):
         self.desktop_button.set_sensitive(not self.job_running)
         self.remove_desktop_button.set_sensitive(not self.job_running)
         self.uninstall_action.set_sensitive(not self.job_running)
+        modifications_available = (
+            not self.job_running and not self.running_roblox_processes()
+        )
+        self.modifications_switch.set_sensitive(modifications_available)
+        self.modifications_button.set_sensitive(modifications_available)
+        self.apply_modifications_button.set_sensitive(modifications_available)
+        self.reset_modifications_button.set_sensitive(modifications_available)
         self.uninstall_status.set_visible(self.job_running)
         if not self.job_running:
             if ready:
@@ -827,11 +1012,10 @@ class RobloxLauncher(Gtk.Application):
             self.status_icon.set_from_icon_name("dialog-error-symbolic")
 
     @staticmethod
-    def running_roblox_sessions():
-        sessions = set()
+    def running_roblox_processes():
+        processes = {}
         try:
-            processes = Path("/proc").iterdir()
-            for entry in processes:
+            for entry in Path("/proc").iterdir():
                 if not entry.name.isdigit():
                     continue
                 try:
@@ -850,17 +1034,157 @@ class RobloxLauncher(Gtk.Application):
 
                 stat_fields = stat[stat.rfind(")") + 2 :].split()
                 if len(stat_fields) >= 4:
-                    session_id = int(stat_fields[3])
-                    sessions.add(session_id)
+                    processes[int(entry.name)] = int(stat_fields[3])
         except OSError:
-            return set()
-        return sessions
+            return {}
+        return processes
+
+    @staticmethod
+    def running_roblox_sessions():
+        return set(RobloxLauncher.running_roblox_processes().values())
 
     def refresh_running_state(self):
-        sessions = self.running_roblox_sessions()
+        processes = self.running_roblox_processes()
+        sessions = set(processes.values())
         self.terminate_button.set_visible(bool(sessions))
         self.terminate_button.set_sensitive(bool(sessions) and not self.job_running)
+        self.update_roblox_fullscreen(set(processes))
         return GLib.SOURCE_CONTINUE
+
+    def update_roblox_fullscreen(self, player_pids):
+        if not player_pids:
+            self.restore_roblox_windows()
+            self.fullscreen_warning_shown = False
+            return
+
+        wmctrl = shutil.which("wmctrl")
+        if wmctrl is None:
+            self.show_fullscreen_warning(
+                "Automatic fullscreen needs wmctrl. On CachyOS, install it "
+                "with `sudo pacman -S wmctrl`."
+            )
+            return
+
+        try:
+            result = subprocess.run(
+                [wmctrl, "-lp"],
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=2,
+            )
+        except (OSError, subprocess.TimeoutExpired) as error:
+            self.show_fullscreen_warning(
+                f"Could not inspect Roblox windows: {error}"
+            )
+            return
+
+        if result.returncode != 0:
+            details = result.stderr.strip() or "wmctrl returned an error."
+            self.show_fullscreen_warning(
+                f"Could not inspect Roblox windows: {details}"
+            )
+            return
+
+        for line in result.stdout.splitlines():
+            fields = line.split(None, 4)
+            if len(fields) < 3 or not fields[2].isdigit():
+                continue
+            if int(fields[2]) not in player_pids:
+                continue
+
+            window_id = fields[0]
+            if window_id in self.fullscreen_window_ids:
+                continue
+            try:
+                fullscreen_result = subprocess.run(
+                    [wmctrl, "-ir", window_id, "-b", "add,fullscreen"],
+                    check=False,
+                    capture_output=True,
+                    text=True,
+                    timeout=2,
+                )
+            except (OSError, subprocess.TimeoutExpired) as error:
+                self.show_fullscreen_warning(
+                    f"Could not fullscreen the Roblox window: {error}"
+                )
+                continue
+            if fullscreen_result.returncode != 0:
+                details = (
+                    fullscreen_result.stderr.strip()
+                    or "wmctrl returned an error."
+                )
+                self.show_fullscreen_warning(
+                    f"Could not fullscreen the Roblox window: {details}"
+                )
+                continue
+            self.fullscreen_window_ids[window_id] = int(fields[2])
+
+    def restore_roblox_windows(self):
+        wmctrl = shutil.which("wmctrl")
+        if wmctrl is None:
+            self.fullscreen_window_ids.clear()
+            return
+
+        try:
+            result = subprocess.run(
+                [wmctrl, "-lp"],
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=2,
+            )
+        except (OSError, subprocess.TimeoutExpired) as error:
+            self.fullscreen_window_ids.clear()
+            self.show_fullscreen_warning(
+                f"Could not inspect Roblox windows while restoring: {error}"
+            )
+            return
+        if result.returncode != 0:
+            self.fullscreen_window_ids.clear()
+            details = result.stderr.strip() or "wmctrl returned an error."
+            self.show_fullscreen_warning(
+                f"Could not inspect Roblox windows while restoring: {details}"
+            )
+            return
+
+        live_windows = {}
+        for line in result.stdout.splitlines():
+            fields = line.split(None, 4)
+            if len(fields) >= 3 and fields[2].isdigit():
+                live_windows[fields[0]] = int(fields[2])
+
+        errors = []
+        for window_id, player_pid in self.fullscreen_window_ids.items():
+            if live_windows.get(window_id) != player_pid:
+                continue
+            try:
+                result = subprocess.run(
+                    [wmctrl, "-ir", window_id, "-b", "remove,fullscreen"],
+                    check=False,
+                    capture_output=True,
+                    text=True,
+                    timeout=2,
+                )
+            except (OSError, subprocess.TimeoutExpired) as error:
+                errors.append(str(error))
+                continue
+            if result.returncode != 0 and result.stderr.strip():
+                errors.append(result.stderr.strip())
+
+        self.fullscreen_window_ids.clear()
+        if errors:
+            self.show_fullscreen_warning(
+                f"Could not restore a Roblox window: {'; '.join(errors)}"
+            )
+
+    def show_fullscreen_warning(self, message):
+        if self.fullscreen_warning_shown:
+            return
+        self.fullscreen_warning_shown = True
+        self.status_title.set_text("Automatic fullscreen is unavailable")
+        self.status_copy.set_text(message)
+        self.status_icon.set_from_icon_name("dialog-warning-symbolic")
 
     def terminate_roblox(self, _button):
         sessions = self.running_roblox_sessions()
@@ -1166,8 +1490,9 @@ class RobloxLauncher(Gtk.Application):
             secondary_text=(
                 "Remove only Roblox and its prepared shaders, or remove the "
                 "entire Mactolinux installation? Removing everything also "
-                "deletes DO_NOT_SHARE, settings, logs, the AppImage, launcher "
-                "files, command, and applications-menu entry."
+                "deletes DO_NOT_SHARE, your modifications folder, settings, "
+                "logs, the AppImage, launcher files, command, and "
+                "applications-menu entry."
             ),
         )
         dialog.add_button("Remove Roblox only", Gtk.ResponseType.APPLY)
@@ -1259,6 +1584,8 @@ class RobloxLauncher(Gtk.Application):
 
     def launch_client(self):
         try:
+            if self.settings["modifications_enabled"]:
+                mods.apply_modifications()
             DATA.mkdir(mode=0o700, parents=True, exist_ok=True)
             os.chmod(DATA, 0o700)
             subprocess.Popen(
@@ -1275,7 +1602,7 @@ class RobloxLauncher(Gtk.Application):
             self.status_copy.set_text(
                 "Launch progress is shown in the Roblox launch window."
             )
-        except OSError as error:
+        except (OSError, ValueError, RuntimeError) as error:
             self.status_title.set_text("Could not start Roblox")
             self.status_copy.set_text(str(error))
 
