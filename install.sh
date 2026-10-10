@@ -33,6 +33,7 @@ banner() {
     printf '  │          ROBLOX ON LINUX · X86-64            │\n'
     printf '  ╰──────────────────────────────────────────────╯%s\n' "$RESET"
     printf '  Play the macOS Roblox client on your Linux desktop.\n'
+    printf '  %sDetected: %s%s\n' "$DIM" "$DISTRO_PRETTY" "$RESET"
     printf '  %sA simple setup; system dependencies may require sudo.%s\n\n' "$DIM" "$RESET"
 }
 
@@ -47,6 +48,27 @@ success() {
 fail() {
     printf '\n%sError:%s %s\n\n' "$RED" "$RESET" "$1" >&2
     exit 1
+}
+
+read_distro() {
+    DISTRO_NAME="Linux"
+    DISTRO_VERSION=""
+    DISTRO_PRETTY=""
+    if [ -r /etc/os-release ]; then
+        . /etc/os-release
+        DISTRO_NAME="${NAME:-${ID:-Linux}}"
+        DISTRO_VERSION="${VERSION_ID:-${VERSION:-}}"
+    fi
+    if [ -n "$DISTRO_VERSION" ]; then
+        case "${PRETTY_NAME:-}" in
+            *"$DISTRO_VERSION"*) DISTRO_PRETTY="$PRETTY_NAME" ;;
+            *) DISTRO_PRETTY="$DISTRO_NAME $DISTRO_VERSION" ;;
+        esac
+    elif [ -n "${BUILD_ID:-}" ]; then
+        DISTRO_PRETTY="${PRETTY_NAME:-$DISTRO_NAME} ($BUILD_ID)"
+    else
+        DISTRO_PRETTY="${PRETTY_NAME:-$DISTRO_NAME}"
+    fi
 }
 
 cancel_install() {
@@ -179,6 +201,7 @@ PY
     [ -s "$appimage_path" ] || fail "The selected AppImage is empty."
 }
 
+read_distro
 banner
 
 : "${HOME:?Could not determine your home directory.}"
@@ -233,10 +256,7 @@ if [ "$install_mode" = install ]; then
 fi
 
 ensure_gtk_dependencies() {
-    if [ -r /etc/os-release ]; then
-        . /etc/os-release
-    fi
-    distro_pretty="${PRETTY_NAME:-${NAME:-Linux}}"
+    distro_pretty="$DISTRO_PRETTY"
 
     if python3 -c 'import gi; gi.require_version("Gtk", "4.0"); from gi.repository import Gtk' >/dev/null 2>&1; then
         success "GTK 4 launcher dependencies are already available on $distro_pretty."
