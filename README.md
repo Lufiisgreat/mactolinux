@@ -4,9 +4,9 @@ An unofficial GTK launcher for the Roblox macOS client on x86-64 Linux.
 
 ## Screenshots
 
-![Mactolinux launcher page](screenshots/launcher.png)
+![Mactolinux launcher page](/launcher.png)
 
-![Roblox Discover page in Mactolinux](screenshots/discover.png)
+![Roblox Discover page in Mactolinux](/discover.png)
 
 ## Install
 
