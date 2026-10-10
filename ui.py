@@ -2443,12 +2443,7 @@ class RobloxLauncher(Gtk.Application):
             )
             self.status_icon.set_from_icon_name("emblem-ok-symbolic")
         else:
-            self.status_title.set_text("Mactolinux update available")
-            self.status_copy.set_text(
-                f"GitHub has commit {latest_commit[:12]}. Run the installer "
-                "and choose Update to install the latest launcher."
-            )
-            self.status_icon.set_from_icon_name("software-update-available-symbolic")
+            self.start_launcher_update(latest_commit)
         return GLib.SOURCE_REMOVE
 
     def start_launcher_update(self, latest_commit):
