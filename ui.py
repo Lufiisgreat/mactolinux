@@ -1001,11 +1001,13 @@ class RobloxLauncher(Gtk.Application):
             "check_updates_on_startup": True,
             "roblox_display_scale": 1.0,
             "modifications_enabled": False,
+            "prefetch_discover": False,
         }
         self.settings_error = ""
         self.settings_status = None
         self.theme_buttons = {}
         self.startup_updates_switch = None
+        self.prefetch_discover_switch = None
         self.fflag_enabled_switch = None
         self.fflag_quality_dropdown = None
         self.fflag_status = None
@@ -1029,6 +1031,9 @@ class RobloxLauncher(Gtk.Application):
                 modifications_enabled = saved_settings.get(
                     "modifications_enabled", False
                 )
+                prefetch_discover = saved_settings.get(
+                    "prefetch_discover", False
+                )
                 if (
                     isinstance(display_scale, bool)
                     or not isinstance(display_scale, (int, float))
@@ -1044,11 +1049,16 @@ class RobloxLauncher(Gtk.Application):
                     raise ValueError("The startup update setting must be a boolean.")
                 if not isinstance(modifications_enabled, bool):
                     raise ValueError("The modifications setting must be a boolean.")
+                if not isinstance(prefetch_discover, bool):
+                    raise ValueError(
+                        "The Discover prefetch setting must be a boolean."
+                    )
                 self.settings.update(
                     theme=theme,
                     check_updates_on_startup=check_updates,
                     roblox_display_scale=float(display_scale),
                     modifications_enabled=modifications_enabled,
+                    prefetch_discover=prefetch_discover,
                 )
         except (OSError, json.JSONDecodeError, ValueError) as error:
             self.settings_error = f"Could not load settings: {error}"
@@ -1062,9 +1072,9 @@ class RobloxLauncher(Gtk.Application):
             self.window.unfullscreen()
         self.refresh_state()
         self.window.present()
-        # Prefetch the Discover page in the background so it is ready
-        # by the time the user opens it.
-        if not self.discover_loaded:
+        # Prefetch the Discover page in the background when enabled so it
+        # is ready by the time the user opens it.
+        if self.settings["prefetch_discover"] and not self.discover_loaded:
             GLib.idle_add(self.load_discover_page)
         if not self.running_monitor_started:
             self.running_monitor_started = True
@@ -1558,6 +1568,10 @@ class RobloxLauncher(Gtk.Application):
         self.settings["check_updates_on_startup"] = switch.get_active()
         self.save_settings()
 
+    def on_prefetch_discover_toggled(self, switch, _state):
+        self.settings["prefetch_discover"] = switch.get_active()
+        self.save_settings()
+
     def on_roblox_display_scale_changed(self, dropdown, _property):
         selected = dropdown.get_selected()
         if selected >= len(ROBLOX_DISPLAY_SCALES):
@@ -1577,8 +1591,8 @@ class RobloxLauncher(Gtk.Application):
         page.append(title)
         page.append(
             self.secondary_label(
-                "Customize the launcher appearance, update checks, and Roblox "
-                "display scaling.",
+                "Customize the launcher appearance, update checks, Roblox "
+                "display scaling, and Discover loading.",
                 "page-copy",
             )
         )
@@ -1660,6 +1674,38 @@ class RobloxLauncher(Gtk.Application):
             "notify::selected", self.on_roblox_display_scale_changed
         )
         display_row.append(display_scale_dropdown)
+
+        discover_heading = self.label("Discover")
+        discover_heading.add_css_class("heading")
+        page.append(discover_heading)
+        discover_row = Gtk.Box(
+            orientation=Gtk.Orientation.HORIZONTAL, spacing=12
+        )
+        page.append(discover_row)
+        discover_text = Gtk.Box(
+            orientation=Gtk.Orientation.VERTICAL, spacing=3
+        )
+        discover_text.set_hexpand(True)
+        discover_row.append(discover_text)
+        discover_text.append(
+            self.label("Load Discover in the background on startup")
+        )
+        discover_text.append(
+            self.secondary_label(
+                "Starts loading the Roblox Discover page as soon as "
+                "Mactolinux opens, so it is ready when you open it.",
+                "page-copy",
+            )
+        )
+        self.prefetch_discover_switch = Gtk.Switch()
+        self.prefetch_discover_switch.set_valign(Gtk.Align.CENTER)
+        self.prefetch_discover_switch.set_active(
+            self.settings["prefetch_discover"]
+        )
+        self.prefetch_discover_switch.connect(
+            "notify::active", self.on_prefetch_discover_toggled
+        )
+        discover_row.append(self.prefetch_discover_switch)
 
         self.settings_status = self.secondary_label("", "page-copy")
         self.settings_status.set_wrap(True)
