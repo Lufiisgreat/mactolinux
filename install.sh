@@ -241,6 +241,35 @@ ensure_gtk_dependencies() {
         fail "GTK 4 and Python GObject introspection are missing. Run install.sh interactively to install them."
     fi
 
+    step "Installing GTK 4 launcher dependencies"
+    if command -v apt-get >/dev/null 2>&1; then
+        pkg_cmd="apt-get install -y python3-gi gir1.2-gtk-4.0"
+    elif command -v dnf >/dev/null 2>&1; then
+        pkg_cmd="dnf install -y python3-gobject gtk4"
+    elif command -v pacman >/dev/null 2>&1; then
+        pkg_cmd="pacman -S --needed --noconfirm python gtk4 python-gobject"
+    else
+        fail "Automatic GTK dependency installation is not supported for your package manager. Install GTK 4 and Python GObject manually."
+    fi
+
+    if [ "$(id -u)" -eq 0 ]; then
+        $pkg_cmd </dev/tty
+    elif command -v sudo >/dev/null 2>&1; then
+        sudo $pkg_cmd </dev/tty
+    else
+        fail "GTK dependencies are missing and sudo is unavailable."
+    fi
+
+    if ! python3 -c 'import gi; gi.require_version("Gtk", "4.0"); from gi.repository import Gtk' >/dev/null 2>&1; then
+        fail "GTK dependencies were installed, but Python still cannot load GTK 4. Check that the system python3 package is being used."
+    fi
+    success "GTK 4 launcher dependencies are available."
+}
+
+    if [ "$1" = noninteractive ]; then
+        fail "GTK 4 and Python GObject introspection are missing. Run install.sh interactively to install them."
+    fi
+
     [ -r /etc/os-release ] ||
         fail "Could not identify this Linux distribution to install GTK 4 dependencies."
     . /etc/os-release
