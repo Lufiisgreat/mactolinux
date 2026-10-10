@@ -2,12 +2,6 @@
 
 An unofficial GTK launcher for the Roblox macOS client on x86-64 Linux.
 
-## Screenshots
-
-![Mactolinux launcher page](/launcher.png)
-
-![Roblox Discover page in Mactolinux](/discover.png)
-
 ## Install
 
 Run this command in a terminal:
@@ -27,6 +21,12 @@ application menu and creates the `mactolinux` command in
 `~/.local/bin`. It does not use `sudo` or remove your saved settings.
 Choose **Update** here to refresh Mactolinux itself. The launcher's
 **Check for Roblox updates** button updates the Roblox client, not Mactolinux.
+
+## Screenshots
+
+![Mactolinux launcher page](/launcher.png)
+
+![Roblox Discover page in Mactolinux](/discover.png)
 
 The Launcher page has separate update actions: **Check for Roblox updates**
 updates the Roblox client, while **Check for Mactolinux updates** checks GitHub
