@@ -42,8 +42,8 @@ TO install, its recommended you install these with mactolinux. Below is both req
 packages but i recommend you install all of it.
 
 
-*Ubuntu/Debian: (apt)	python3-gi gir1.2-gtk-4.0 gir1.2-webkit-6.0 gir1.2-secret-1 wmctrl
-*
+*Ubuntu/Debian: (apt)	python3-gi gir1.2-gtk-4.0 gir1.2-webkit-6.0 gir1.2-secret-1 wmctrl*
+
 *Fedora: (dnf) python3-gobject gtk4 webkitgtk6.0 libsecret wmctrl*
 
 *Arch: (pacman)	python gtk4 python-gobject webkitgtk-6.0 libsecret wmctrl*
