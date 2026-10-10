@@ -50,11 +50,7 @@ Service support:
 sudo pacman -S webkitgtk-6.0 libsecret
 ```
 
-On Ubuntu or Debian, install them with:
-
-```sh
-sudo apt install python3 python3-gi gir1.2-gtk-4.0 gir1.2-webkit-6.0 gir1.2-secret-1 wmctrl
-```
+On Ubuntu, Debian, or fedora, mactolinux isnt really supported except for the ui opening for now, i am working on it tho!
 
 Discover opens the Roblox website inside the launcher when WebKitGTK 6.0 is
 installed. Otherwise, it offers to open the site in your default browser. The
