@@ -21,5 +21,12 @@ case "${1:-}" in
         [ "$#" -eq 1 ] || { echo "Expected one Roblox game launch URI." >&2; exit 2; }
         export ROBLOX_MAC_LAUNCH_URI="$1"
         exec "$HERE/RobloxLinux.AppImage" --debug;;
+    http://roblox.com/games/start\?*|https://roblox.com/games/start\?*|\
+    http://*.roblox.com/games/start\?*|https://*.roblox.com/games/start\?*|\
+    http://roblox.com/*/games/start\?*|https://roblox.com/*/games/start\?*|\
+    http://*.roblox.com/*/games/start\?*|https://*.roblox.com/*/games/start\?*)
+        [ "$#" -eq 1 ] || { echo "Expected one Roblox game launch URI." >&2; exit 2; }
+        export ROBLOX_MAC_LAUNCH_URI="$1"
+        exec "$HERE/RobloxLinux.AppImage" --debug;;
     *) exec "$HERE/RobloxLinux.AppImage" --debug "$@";;
 esac

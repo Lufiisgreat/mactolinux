@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import json
 import os
+import re
 import subprocess
 import sys
 import time
@@ -345,9 +346,30 @@ def parse_launch_uri(arguments):
     if len(uri) > 32768 or any(character.isspace() for character in uri):
         raise ValueError("The Roblox game launch URI is invalid.")
     try:
-        scheme = urlsplit(uri).scheme.casefold()
+        parsed_uri = urlsplit(uri)
+        scheme = parsed_uri.scheme.casefold()
     except ValueError as error:
         raise ValueError("The Roblox game launch URI is invalid.") from error
+    if scheme in ("http", "https"):
+        try:
+            hostname = (parsed_uri.hostname or "").casefold()
+            port = parsed_uri.port
+        except ValueError as error:
+            raise ValueError("The Roblox game launch URI is invalid.") from error
+        is_roblox_game_start = (
+            (hostname == "roblox.com" or hostname.endswith(".roblox.com"))
+            and parsed_uri.username is None
+            and parsed_uri.password is None
+            and port is None
+            and re.fullmatch(
+                r"(?:/[a-z]{2}(?:-[a-z0-9]{2,3})?)?/games/start/?",
+                parsed_uri.path,
+                re.IGNORECASE,
+            )
+        )
+        if not is_roblox_game_start:
+            raise ValueError("Only Roblox game launch URIs are supported.")
+        return uri
     if scheme not in ("roblox-player", "roblox"):
         raise ValueError("Only Roblox game launch URIs are supported.")
     return uri

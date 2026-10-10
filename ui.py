@@ -70,15 +70,46 @@ ROBLOX_SESSION_ATTRIBUTES = {"application": "mactolinux"}
 ROBLOX_SESSION_COOKIE = ".ROBLOSECURITY"
 
 
+def is_roblox_host(hostname):
+    hostname = (hostname or "").casefold()
+    return hostname == "roblox.com" or hostname.endswith(".roblox.com")
+
+
+def is_roblox_game_start_uri(uri):
+    try:
+        parsed_uri = urlsplit(uri)
+        port = parsed_uri.port
+    except ValueError:
+        return False
+    return (
+        parsed_uri.scheme.casefold() in ("http", "https")
+        and is_roblox_host(parsed_uri.hostname)
+        and parsed_uri.username is None
+        and parsed_uri.password is None
+        and port is None
+        and re.fullmatch(
+            r"(?:/[a-z]{2}(?:-[a-z0-9]{2,3})?)?/games/start/?",
+            parsed_uri.path,
+            re.IGNORECASE,
+        )
+        is not None
+    )
+
+
 def validate_game_uri(uri):
     try:
         parsed_uri = urlsplit(uri)
     except ValueError as error:
         raise ValueError("The Roblox game link is invalid.") from error
-    if parsed_uri.scheme.casefold() not in ("roblox-player", "roblox"):
-        raise ValueError("Only Roblox game launch links are supported.")
     if len(uri) > 32768 or any(character.isspace() for character in uri):
         raise ValueError("The Roblox game link is invalid.")
+    scheme = parsed_uri.scheme.casefold()
+    if scheme in ("http", "https"):
+        if not is_roblox_game_start_uri(uri):
+            raise ValueError("Only Roblox game launch links are supported.")
+        return uri
+    if scheme not in ("roblox-player", "roblox"):
+        raise ValueError("Only Roblox game launch links are supported.")
     if (
         parsed_uri.scheme.casefold() == "roblox"
         and parsed_uri.netloc.casefold() == "experiences"
@@ -1564,9 +1595,7 @@ class RobloxLauncher(Gtk.Application):
                 page_host = urlsplit(web_view.get_uri() or "").hostname
             except ValueError:
                 page_host = None
-            if page_host != "roblox.com" and not (
-                page_host and page_host.endswith(".roblox.com")
-            ):
+            if not is_roblox_host(page_host):
                 self.show_discover_message(
                     "Only game links opened from the Roblox website can be launched."
                 )
@@ -1575,6 +1604,29 @@ class RobloxLauncher(Gtk.Application):
             self.open_game_uri(uri)
             decision.ignore()
             return True
+
+        if scheme in ("http", "https"):
+            if is_roblox_game_start_uri(uri):
+                try:
+                    page_host = urlsplit(web_view.get_uri() or "").hostname
+                except ValueError:
+                    page_host = None
+                if not is_roblox_host(page_host):
+                    self.show_discover_message(
+                        "Only game links opened from the Roblox website can be launched."
+                    )
+                    decision.ignore()
+                    return True
+                try:
+                    launch_uri = validate_game_uri(uri)
+                except ValueError as error:
+                    self.show_discover_message(
+                        f"Could not read the Roblox game link: {error}"
+                    )
+                else:
+                    self.open_game_uri(launch_uri)
+                decision.ignore()
+                return True
 
         if decision_type == WebKit.PolicyDecisionType.NEW_WINDOW_ACTION:
             if scheme in ("http", "https"):
