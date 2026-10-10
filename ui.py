@@ -56,7 +56,7 @@ TEXTURE_FLAGS = {
 DESKTOP_FILE_NAME = "roblox-linux-release.desktop"
 DESKTOP_SHORTCUT_MARKER = "X-RobloxLinuxRelease=true"
 APP_NAME = "Mactolinux"
-__version__ = "0.66patch1"
+__version__ = "0.66patch1.5"
 ROBLOX_DISPLAY_SCALES = (1.0, 1.5, 1.75, 2.0)
 ROBLOX_SESSION_SCHEMA = (
     Secret.Schema.new(
@@ -1062,6 +1062,10 @@ class RobloxLauncher(Gtk.Application):
             self.window.unfullscreen()
         self.refresh_state()
         self.window.present()
+        # Prefetch the Discover page in the background so it is ready
+        # by the time the user opens it.
+        if not self.discover_loaded:
+            GLib.idle_add(self.load_discover_page)
         if not self.running_monitor_started:
             self.running_monitor_started = True
             GLib.timeout_add_seconds(2, self.refresh_running_state)
