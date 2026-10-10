@@ -320,39 +320,70 @@ fi
 
 ensure_gtk_dependencies() {
     distro_pretty="$DISTRO_PRETTY"
+    dependency_mode="${1:-interactive}"
 
     if python3 -c 'import gi; gi.require_version("Gtk", "4.0"); from gi.repository import Gtk' >/dev/null 2>&1; then
         success "GTK 4 launcher dependencies are already available on $distro_pretty."
+    else
+        if [ "$dependency_mode" = noninteractive ]; then
+            fail "GTK 4 and Python GObject introspection are missing. Run install.sh interactively to install them."
+        fi
+
+        step "Installing GTK 4 launcher dependencies for $distro_pretty"
+        if command -v apt-get >/dev/null 2>&1; then
+            pkg_cmd="apt-get install -y python3-gi gir1.2-gtk-4.0"
+        elif command -v dnf >/dev/null 2>&1; then
+            pkg_cmd="dnf install -y python3-gobject gtk4"
+        elif command -v pacman >/dev/null 2>&1; then
+            pkg_cmd="pacman -S --needed --noconfirm python gtk4 python-gobject"
+        else
+            fail "Automatic GTK dependency installation is not supported for your package manager. Install GTK 4 and Python GObject manually."
+        fi
+
+        if [ "$(id -u)" -eq 0 ]; then
+            $pkg_cmd </dev/tty
+        elif command -v sudo >/dev/null 2>&1; then
+            sudo $pkg_cmd </dev/tty
+        else
+            fail "GTK dependencies are missing and sudo is unavailable."
+        fi
+
+        if ! python3 -c 'import gi; gi.require_version("Gtk", "4.0"); from gi.repository import Gtk' >/dev/null 2>&1; then
+            fail "GTK dependencies were installed, but Python still cannot load GTK 4. Check that the system python3 package is being used."
+        fi
+        success "GTK 4 launcher dependencies installed successfully on $distro_pretty."
+    fi
+
+    if [ "$dependency_mode" = noninteractive ]; then
         return
     fi
 
-    if [ "${1:-}" = noninteractive ]; then
-        fail "GTK 4 and Python GObject introspection are missing. Run install.sh interactively to install them."
+    if python3 -c 'import gi; gi.require_version("WebKit", "6.0"); from gi.repository import WebKit' >/dev/null 2>&1 &&
+        python3 -c 'import gi; gi.require_version("Secret", "1"); from gi.repository import Secret' >/dev/null 2>&1 &&
+        command -v wmctrl >/dev/null 2>&1; then
+        success "Optional Discover, keyring, and fullscreen support are already available on $distro_pretty."
+        return
     fi
 
-    step "Installing GTK 4 launcher dependencies for $distro_pretty"
     if command -v apt-get >/dev/null 2>&1; then
-        pkg_cmd="apt-get install -y python3-gi gir1.2-gtk-4.0"
+        optional_cmd="apt-get install -y gir1.2-webkit-6.0 gir1.2-secret-1 wmctrl"
     elif command -v dnf >/dev/null 2>&1; then
-        pkg_cmd="dnf install -y python3-gobject gtk4"
+        optional_cmd="dnf install -y webkitgtk6.0 libsecret wmctrl"
     elif command -v pacman >/dev/null 2>&1; then
-        pkg_cmd="pacman -S --needed --noconfirm python gtk4 python-gobject"
+        optional_cmd="pacman -S --needed --noconfirm webkitgtk-6.0 libsecret wmctrl"
     else
-        fail "Automatic GTK dependency installation is not supported for your package manager. Install GTK 4 and Python GObject manually."
+        optional_cmd=""
     fi
 
-    if [ "$(id -u)" -eq 0 ]; then
-        $pkg_cmd </dev/tty
-    elif command -v sudo >/dev/null 2>&1; then
-        sudo $pkg_cmd </dev/tty
-    else
-        fail "GTK dependencies are missing and sudo is unavailable."
+    if [ -n "$optional_cmd" ]; then
+        step "Installing optional Discover, keyring, and fullscreen support for $distro_pretty"
+        if [ "$(id -u)" -eq 0 ]; then
+            $optional_cmd </dev/tty || :
+        elif command -v sudo >/dev/null 2>&1; then
+            sudo $optional_cmd </dev/tty || :
+        fi
+        success "Optional Discover, keyring, and fullscreen packages are installed where available on $distro_pretty."
     fi
-
-    if ! python3 -c 'import gi; gi.require_version("Gtk", "4.0"); from gi.repository import Gtk' >/dev/null 2>&1; then
-        fail "GTK dependencies were installed, but Python still cannot load GTK 4. Check that the system python3 package is being used."
-    fi
-    success "GTK 4 launcher dependencies installed successfully on $distro_pretty."
 }
 
 if [ "${1:-}" = "--update-noninteractive" ]; then

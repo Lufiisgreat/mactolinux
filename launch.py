@@ -198,11 +198,6 @@ class RobloxLaunchWindow(Gtk.Application):
         logs.add_css_class("log-panel")
         content.append(logs)
 
-        footer = Gtk.Label(label=f"Version {__version__}")
-        footer.add_css_class("footer")
-        footer.set_halign(Gtk.Align.CENTER)
-        content.append(footer)
-
         log_header = Gtk.Box(
             orientation=Gtk.Orientation.HORIZONTAL, spacing=8
         )
@@ -394,10 +389,6 @@ def parse_launch_uri(arguments):
     return uri
 
 
-# Version 0.66patch1
-__version__ = "0.66patch1"
-
-
 if __name__ == "__main__":
     try:
         launch_uri = parse_launch_uri(sys.argv[1:])
@@ -406,5 +397,3 @@ if __name__ == "__main__":
         raise SystemExit(2) from error
     app = RobloxLaunchWindow(launch_uri)
     raise SystemExit(app.run(None))
-
-
