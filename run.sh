@@ -19,6 +19,7 @@ case "${1:-}" in
     --diagnose|--debug|--client-version|--download-client) exec "$HERE/RobloxLinux.AppImage" "$@";;
     roblox://*|roblox-player:*)
         [ "$#" -eq 1 ] || { echo "Expected one Roblox game launch URI." >&2; exit 2; }
-        exec "$HERE/RobloxLinux.AppImage" --debug -url "$1";;
+        export ROBLOX_MAC_LAUNCH_URI="$1"
+        exec "$HERE/RobloxLinux.AppImage" --debug;;
     *) exec "$HERE/RobloxLinux.AppImage" --debug "$@";;
 esac

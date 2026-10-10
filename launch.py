@@ -28,7 +28,7 @@ THEMES = {
 @define-color log_bg #1c1d1f;
 @define-color secondary_fg #b0b4b8;
 @define-color footer_fg #858a8e;
-@define-color accent #6b91ff;
+@define-color accent #c0b9d8;
 """,
     "light": b"""
 @define-color app_bg #ffffff;
@@ -39,7 +39,7 @@ THEMES = {
 @define-color log_bg #fafafa;
 @define-color secondary_fg #60656b;
 @define-color footer_fg #777d83;
-@define-color accent #335fff;
+@define-color accent #c0b9d8;
 """,
 }
 
@@ -47,6 +47,12 @@ CSS = b"""
 window {
   background: @app_bg;
   color: @app_fg;
+}
+button {
+  transition: 160ms ease-out;
+}
+button:hover {
+  transition: 160ms ease-out;
 }
 headerbar {
   background: @header_top;
@@ -157,13 +163,6 @@ class RobloxLaunchWindow(Gtk.Application):
         hero.add_css_class("launch-card")
         content.append(hero)
 
-        self.spinner = Gtk.Spinner()
-        self.spinner.set_size_request(48, 48)
-        self.spinner.add_css_class("launch-spinner")
-        self.spinner.start()
-        hero.append(self.spinner)
-        self.spinner.set_halign(Gtk.Align.CENTER)
-
         heading = Gtk.Label(
             label="Joining Roblox game"
             if self.launch_uri
@@ -172,6 +171,13 @@ class RobloxLaunchWindow(Gtk.Application):
         heading.add_css_class("launch-title")
         heading.set_halign(Gtk.Align.CENTER)
         hero.append(heading)
+
+        self.spinner = Gtk.Spinner()
+        self.spinner.set_size_request(48, 48)
+        self.spinner.add_css_class("launch-spinner")
+        self.spinner.start()
+        hero.append(self.spinner)
+        self.spinner.set_halign(Gtk.Align.CENTER)
 
         self.status = Gtk.Label(
             label=(

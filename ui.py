@@ -12,7 +12,7 @@ import time
 import urllib.error
 import urllib.request
 from pathlib import Path
-from urllib.parse import urlsplit
+from urllib.parse import parse_qsl, urlencode, urlsplit
 
 import gi
 
@@ -79,6 +79,31 @@ def validate_game_uri(uri):
         raise ValueError("Only Roblox game launch links are supported.")
     if len(uri) > 32768 or any(character.isspace() for character in uri):
         raise ValueError("The Roblox game link is invalid.")
+    if (
+        parsed_uri.scheme.casefold() == "roblox"
+        and parsed_uri.netloc.casefold() == "experiences"
+        and parsed_uri.path.casefold() == "/start"
+    ):
+        query = parse_qsl(parsed_uri.query, keep_blank_values=True)
+        place_id = next(
+            (
+                value
+                for key, value in query
+                if key.casefold() == "placeid"
+                and value.isascii()
+                and value.isdigit()
+            ),
+            None,
+        )
+        if place_id is not None:
+            other_parameters = [
+                (key, value) for key, value in query if key.casefold() != "placeid"
+            ]
+            uri = f"roblox://placeId={place_id}"
+            if other_parameters:
+                uri += f"&{urlencode(other_parameters)}"
+            if parsed_uri.fragment:
+                uri += f"#{parsed_uri.fragment}"
     return uri
 
 
@@ -92,16 +117,15 @@ headerbar {
   border-bottom: 1px solid @border;
   box-shadow: none;
   min-height: 44px;
-}
-headerbar .title {
-  font-weight: 700;
+  box-shadow: none;
+  min-height: 44px;
 }
 button {
   background: @button_bg;
   color: @app_fg;
   border-color: @border;
   border-radius: 5px;
-  transition: 120ms ease-out;
+  transition: 160ms ease-out;
 }
 button:hover {
   background: @button_hover;
@@ -139,10 +163,19 @@ button:checked {
   padding: 0;
 }
 .status {
-  background: transparent;
-  border: none;
-  border-radius: 0;
-  padding: 8px 0;
+  background: @status_bg;
+  border: 1px solid @border;
+  border-radius: 8px;
+  padding: 12px 14px;
+}
+.action-card {
+  background: @status_bg;
+  border: 1px solid @border;
+  border-radius: 10px;
+  padding: 12px;
+}
+.action-card .actions {
+  padding: 2px 0;
 }
 .version {
   color: @secondary_fg;
@@ -154,10 +187,11 @@ button:checked {
 }
 button.suggested-action {
   background: @accent;
-  color: #fff;
+  color: #2c2637;
   border-color: @accent;
   font-weight: 700;
   border-radius: 5px;
+  transition: 160ms ease-out;
 }
 button.suggested-action:hover {
   background: @accent_hover;
@@ -165,6 +199,12 @@ button.suggested-action:hover {
 }
 switch:checked {
   background-color: @accent;
+}
+dropdown,
+entry,
+combobox button,
+togglebutton {
+  border-radius: 9px;
 }
 .footer {
   color: @footer_fg;
@@ -221,6 +261,7 @@ switch:checked {
   border-radius: 4px;
   color: @secondary_fg;
   font-size: 13px;
+  transition: 160ms ease-out;
 }
 .nav button.nav-button:hover {
   background: @button_hover;
@@ -270,14 +311,14 @@ THEMES = {
 @define-color button_bg #ffffff;
 @define-color button_hover #f2f3f5;
 @define-color button_selected #e9eaec;
-@define-color nav_selected #eef3ff;
+@define-color nav_selected alpha(#c0b9d8, 0.30);
 @define-color intro_start #ffffff;
 @define-color intro_border #e1e3e6;
 @define-color status_bg #ffffff;
 @define-color secondary_fg #60656b;
 @define-color footer_fg #777d83;
-@define-color accent #335fff;
-@define-color accent_hover #244fe5;
+@define-color accent #c0b9d8;
+@define-color accent_hover #afa4cb;
 """,
     "dark": b"""
 @define-color app_bg #191a1b;
@@ -288,14 +329,14 @@ THEMES = {
 @define-color button_bg #242526;
 @define-color button_hover #303234;
 @define-color button_selected #3b3d3f;
-@define-color nav_selected #252c3b;
+@define-color nav_selected alpha(#c0b9d8, 0.18);
 @define-color intro_start #191a1b;
 @define-color intro_border #343638;
 @define-color status_bg #191a1b;
 @define-color secondary_fg #b0b4b8;
 @define-color footer_fg #858a8e;
-@define-color accent #6b91ff;
-@define-color accent_hover #527dff;
+@define-color accent #c0b9d8;
+@define-color accent_hover #d1c9e5;
 """,
 }
 
@@ -357,6 +398,7 @@ class RobloxLauncher(Gtk.Application):
         self.navigation = None
         self.navigation_buttons = {}
         self.sidebar = None
+        self.sidebar_revealer = None
         self.discover_status = None
         self.web_view = None
         self.web_network_session = None
@@ -507,7 +549,14 @@ class RobloxLauncher(Gtk.Application):
         )
         self.sidebar.set_size_request(185, -1)
         self.sidebar.add_css_class("sidebar")
-        shell.append(self.sidebar)
+        self.sidebar_revealer = Gtk.Revealer()
+        self.sidebar_revealer.set_transition_type(
+            Gtk.RevealerTransitionType.SLIDE_RIGHT
+        )
+        self.sidebar_revealer.set_transition_duration(220)
+        self.sidebar_revealer.set_reveal_child(True)
+        self.sidebar_revealer.set_child(self.sidebar)
+        shell.append(self.sidebar_revealer)
 
         self.sidebar.append(self.secondary_label("MENU", "nav-section-label"))
 
@@ -517,8 +566,8 @@ class RobloxLauncher(Gtk.Application):
         self.navigation.add_css_class("nav")
         self.sidebar.append(self.navigation)
         for page_name, label, icon_name in (
-            ("home", "Discover", "go-home-symbolic"),
             ("launcher", "Launcher", "applications-games-symbolic"),
+            ("home", "Discover", "go-home-symbolic"),
             ("fflags", "FFlags & Mods", "applications-system-symbolic"),
             ("settings", "Settings", "preferences-system-symbolic"),
             ("info", "Info", "help-about-symbolic"),
@@ -547,13 +596,11 @@ class RobloxLauncher(Gtk.Application):
         self.sidebar_play_button.set_margin_start(4)
         self.sidebar_play_button.set_margin_end(4)
         self.sidebar.append(self.sidebar_play_button)
-        self.sidebar.set_visible(False)
-
         self.stack = Gtk.Stack()
         self.stack.set_hexpand(True)
         self.stack.set_vexpand(True)
         self.stack.set_transition_type(Gtk.StackTransitionType.CROSSFADE)
-        self.stack.set_transition_duration(150)
+        self.stack.set_transition_duration(200)
         shell.append(self.stack)
         self.apply_theme(self.settings["theme"])
 
@@ -674,19 +721,25 @@ class RobloxLauncher(Gtk.Application):
             self.check_launcher_updates,
         )
 
+        action_card = Gtk.Box(
+            orientation=Gtk.Orientation.VERTICAL, spacing=8
+        )
+        action_card.add_css_class("action-card")
+        content.append(action_card)
+
         buttons = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=9)
         buttons.add_css_class("actions")
         buttons.append(self.play_button)
         buttons.append(self.terminate_button)
         buttons.append(self.update_button)
-        content.append(buttons)
+        action_card.append(buttons)
 
         launcher_update_row = Gtk.Box(
             orientation=Gtk.Orientation.HORIZONTAL, spacing=9
         )
         launcher_update_row.add_css_class("actions")
         launcher_update_row.append(self.launcher_update_button)
-        content.append(launcher_update_row)
+        action_card.append(launcher_update_row)
 
         shortcut_buttons = Gtk.Box(
             orientation=Gtk.Orientation.HORIZONTAL, spacing=9
@@ -700,7 +753,7 @@ class RobloxLauncher(Gtk.Application):
         )
         self.remove_desktop_button.set_visible(False)
         shortcut_buttons.append(self.remove_desktop_button)
-        content.append(shortcut_buttons)
+        action_card.append(shortcut_buttons)
 
         separator = Gtk.Separator()
         content.append(separator)
@@ -1276,7 +1329,6 @@ class RobloxLauncher(Gtk.Application):
 
     def show_page(self, _button, page_name):
         self.stack.set_visible_child_name(page_name)
-        self.sidebar.set_visible(page_name != "home")
         if page_name == "home":
             self.load_discover_page()
         for name, button in self.navigation_buttons.items():
@@ -1286,7 +1338,9 @@ class RobloxLauncher(Gtk.Application):
                 button.remove_css_class("selected")
 
     def toggle_sidebar(self, _button):
-        self.sidebar.set_visible(not self.sidebar.get_visible())
+        self.sidebar_revealer.set_reveal_child(
+            not self.sidebar_revealer.get_reveal_child()
+        )
 
     def load_discover_page(self):
         if self.discover_loaded or self.web_view is None:
