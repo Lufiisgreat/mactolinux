@@ -1116,7 +1116,9 @@ class RobloxLauncher(Gtk.Application):
                 "Temporarily changes your primary display scale before Roblox "
                 "starts and restores it when Roblox exits, unless you change "
                 "the scale manually during play. Changes apply the next time "
-                "Roblox starts. KDE Plasma Wayland only.",
+                "Roblox starts. KDE Plasma Wayland only. " \
+                "The higher you go the more zoomed in roblox gets, but roblox " \
+                "will become more and more lower quality the more you increase it.",
                 "page-copy",
             )
         )
