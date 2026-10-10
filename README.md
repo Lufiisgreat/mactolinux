@@ -36,21 +36,20 @@ installs launcher updates from GitHub and restarts, then checks and updates the
 Roblox client from the GUI. When startup checks are disabled, neither update
 is checked automatically.
 
-The launcher requires Python 3, GTK 4, and Python GObject introspection. On
-CachyOS, install the required packages with:
+## Install
 
-```sh
-sudo pacman -S python gtk4 python-gobject wmctrl
+TO install, its recommended you install these with mactolinux.
+
+Distro	               Required	                             Optional (best-effort)
+Ubuntu/Debian          (apt)	python3-gi gir1.2-gtk-4.0	     gir1.2-webkit-6.0 gir1.2-secret-1 wmctrl
+Fedora (dnf)	         python3-gobject gtk4	               webkitgtk6.0 libsecret wmctrl
+Arch (pacman)	         python gtk4 python-gobject	         webkitgtk-6.0 libsecret wmctrl
 ```
 
 For encrypted Roblox sign-in persistence, install WebKitGTK and Secret
-Service support:
+Service support.
 
-```sh
-sudo pacman -S webkitgtk-6.0 libsecret
-```
-
-On Ubuntu, Debian, or fedora, mactolinux isnt really supported except for the ui opening for now, i am working on it tho!
+On Ubuntu, Debian, or fedora, mactolinux is a bit experimental for now, ill fix it soon.
 
 Discover opens the Roblox website inside the launcher when WebKitGTK 6.0 is
 installed. Otherwise, it offers to open the site in your default browser. The
