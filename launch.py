@@ -394,6 +394,10 @@ def parse_launch_uri(arguments):
     return uri
 
 
+# Version 0.66patch1
+__version__ = "0.66patch1"
+
+
 if __name__ == "__main__":
     try:
         launch_uri = parse_launch_uri(sys.argv[1:])
@@ -404,5 +408,3 @@ if __name__ == "__main__":
     raise SystemExit(app.run(None))
 
 
-# Version 0.66patch1
-__version__ = "0.66patch1"
