@@ -3247,3 +3247,7 @@ class RobloxLauncher(Gtk.Application):
 if __name__ == "__main__":
     app = RobloxLauncher()
     raise SystemExit(app.run(None))
+
+
+# Version 0.66patch1
+__version__ = "0.66patch1"

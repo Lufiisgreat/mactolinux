@@ -397,3 +397,7 @@ if __name__ == "__main__":
         raise SystemExit(2) from error
     app = RobloxLaunchWindow(launch_uri)
     raise SystemExit(app.run(None))
+
+
+# Version 0.66patch1
+__version__ = "0.66patch1"
