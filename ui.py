@@ -993,12 +993,28 @@ class RobloxLauncher(Gtk.Application):
 
     def apply_theme(self, theme):
         self.theme_provider.load_from_data(THEMES[theme] + CSS)
-        Gtk.Settings.get_default().set_property(
-            "gtk-interface-color-scheme",
-            Gtk.InterfaceColorScheme.DARK
-            if theme == "dark"
-            else Gtk.InterfaceColorScheme.LIGHT,
-        )
+        settings = Gtk.Settings.get_default()
+        if settings is None:
+            return
+        # gtk-interface-color-scheme / Gtk.InterfaceColorScheme exist only in
+        # GTK 4.18+. Fall back to the legacy dark-theme hint on older GTK
+        # builds such as Fedora, Ubuntu, and Debian.
+        color_scheme = getattr(Gtk, "InterfaceColorScheme", None)
+        if (
+            color_scheme is not None
+            and settings.find_property("gtk-interface-color-scheme") is not None
+        ):
+            settings.set_property(
+                "gtk-interface-color-scheme",
+                color_scheme.DARK if theme == "dark" else color_scheme.LIGHT,
+            )
+        elif (
+            settings.find_property("gtk-application-prefer-dark-theme")
+            is not None
+        ):
+            settings.set_property(
+                "gtk-application-prefer-dark-theme", theme == "dark"
+            )
 
     def save_settings(self):
         temporary_path = None
