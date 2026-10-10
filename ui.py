@@ -458,6 +458,499 @@ def run_logged(args, log_path):
     return result.returncode
 
 
+def _desktop_tokens():
+    raw = (
+        os.environ.get("XDG_CURRENT_DESKTOP")
+        or os.environ.get("DESKTOP_SESSION")
+        or ""
+    )
+    return {
+        token.strip().casefold()
+        for token in re.split(r"[:;]", raw)
+        if token.strip()
+    }
+
+
+class DisplayScaleBackend:
+    """Per-desktop helper that reads and changes the desktop's display scale."""
+
+    key = ""
+    label = ""
+
+    @classmethod
+    def available(cls):
+        return False
+
+    def read(self, output_name=None):
+        raise RuntimeError("Display scaling is not supported on this desktop.")
+
+    def write(self, output_name, scale):
+        raise RuntimeError("Display scaling is not supported on this desktop.")
+
+
+class KdeDisplayScaleBackend(DisplayScaleBackend):
+    key = "kde"
+    label = "KDE Plasma"
+
+    @classmethod
+    def available(cls):
+        return (
+            "kde" in _desktop_tokens()
+            or bool(os.environ.get("KDE_SESSION_VERSION"))
+        ) and shutil.which("kscreen-doctor") is not None
+
+    def read(self, output_name=None):
+        result = subprocess.run(
+            ["kscreen-doctor", "--json"],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        if result.returncode != 0:
+            details = result.stderr.strip() or "kscreen-doctor returned an error."
+            raise RuntimeError(f"Could not inspect display scaling: {details}")
+        try:
+            outputs = json.loads(result.stdout)["outputs"]
+        except (json.JSONDecodeError, KeyError, TypeError) as error:
+            raise RuntimeError(
+                f"Could not read KDE display information: {error}"
+            ) from error
+        if not isinstance(outputs, list):
+            raise RuntimeError("KDE returned an invalid display list.")
+        output = next(
+            (
+                candidate
+                for candidate in outputs
+                if isinstance(candidate, dict)
+                and candidate.get("connected") is True
+                and (
+                    candidate.get("name") == output_name
+                    or (
+                        output_name is None
+                        and candidate.get("enabled") is True
+                        and candidate.get("priority") == 1
+                    )
+                )
+            ),
+            None,
+        )
+        if output is None:
+            message = (
+                f"KDE no longer reports the {output_name} display."
+                if output_name is not None
+                else "KDE did not report an enabled primary display."
+            )
+            raise RuntimeError(message)
+        name = output.get("name")
+        scale = output.get("scale")
+        if (
+            not isinstance(name, str)
+            or re.fullmatch(r"[A-Za-z0-9_.-]+", name) is None
+            or isinstance(scale, bool)
+            or not isinstance(scale, (int, float))
+            or not math.isfinite(scale)
+            or scale <= 0
+        ):
+            raise RuntimeError("KDE returned invalid primary display settings.")
+        return name, float(scale)
+
+    def write(self, name, scale):
+        if re.fullmatch(r"[A-Za-z0-9_.-]+", name) is None:
+            raise RuntimeError("KDE returned an invalid display name.")
+        result = subprocess.run(
+            ["kscreen-doctor", f"output.{name}.scale.{scale:.15g}"],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        if result.returncode != 0:
+            details = result.stderr.strip() or "kscreen-doctor returned an error."
+            raise RuntimeError(f"Could not change display scaling: {details}")
+        _, actual_scale = self.read(name)
+        if not math.isclose(actual_scale, scale):
+            raise RuntimeError(
+                f"KDE left {name} at {actual_scale * 100:g}% scaling instead "
+                f"of {scale * 100:g}%."
+            )
+
+
+class HyprlandDisplayScaleBackend(DisplayScaleBackend):
+    key = "hyprland"
+    label = "Hyprland"
+
+    @classmethod
+    def available(cls):
+        return (
+            bool(os.environ.get("HYPRLAND_INSTANCE_SIGNATURE"))
+            and shutil.which("hyprctl") is not None
+        )
+
+    @staticmethod
+    def _monitors():
+        result = subprocess.run(
+            ["hyprctl", "-j", "monitors"],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        if result.returncode != 0:
+            details = result.stderr.strip() or "hyprctl returned an error."
+            raise RuntimeError(f"Could not inspect display scaling: {details}")
+        try:
+            monitors = json.loads(result.stdout)
+        except json.JSONDecodeError as error:
+            raise RuntimeError(
+                f"Could not read Hyprland monitor information: {error}"
+            ) from error
+        if not isinstance(monitors, list):
+            raise RuntimeError("Hyprland returned an invalid monitor list.")
+        return [
+            monitor
+            for monitor in monitors
+            if isinstance(monitor, dict)
+            and monitor.get("name")
+            and monitor.get("disabled") is not True
+        ]
+
+    def read(self, output_name=None):
+        monitors = self._monitors()
+        if not monitors:
+            raise RuntimeError("Hyprland did not report a connected display.")
+        if output_name is not None:
+            monitor = next(
+                (m for m in monitors if m.get("name") == output_name), None
+            )
+            if monitor is None:
+                raise RuntimeError(
+                    f"Hyprland no longer reports the {output_name} display."
+                )
+        else:
+            monitor = next(
+                (m for m in monitors if m.get("focused") is True), None
+            ) or sorted(
+                monitors, key=lambda m: (m.get("x", 0), m.get("y", 0))
+            )[0]
+        name = monitor.get("name")
+        scale = monitor.get("scale")
+        if (
+            not isinstance(name, str)
+            or re.fullmatch(r"[A-Za-z0-9_.-]+", name) is None
+            or isinstance(scale, bool)
+            or not isinstance(scale, (int, float))
+            or not math.isfinite(scale)
+            or scale <= 0
+        ):
+            raise RuntimeError("Hyprland returned invalid display settings.")
+        return name, float(scale)
+
+    def write(self, name, scale):
+        if re.fullmatch(r"[A-Za-z0-9_.-]+", name) is None:
+            raise RuntimeError("Hyprland returned an invalid display name.")
+        monitor = next(
+            (m for m in self._monitors() if m.get("name") == name), None
+        )
+        if monitor is None:
+            raise RuntimeError(f"Hyprland no longer reports the {name} display.")
+        try:
+            width = int(monitor.get("width"))
+            height = int(monitor.get("height"))
+        except (TypeError, ValueError):
+            raise RuntimeError("Hyprland did not report the display resolution.")
+        x = int(monitor.get("x") or 0)
+        y = int(monitor.get("y") or 0)
+        try:
+            refresh = float(monitor.get("refreshRate"))
+        except (TypeError, ValueError):
+            refresh = 60.0
+        if width <= 0 or height <= 0:
+            raise RuntimeError("Hyprland did not report the display resolution.")
+        spec = f"{name},{width}x{height}@{refresh:.6g},{x}x{y},{scale:.15g}"
+        result = subprocess.run(
+            ["hyprctl", "keyword", "monitor", spec],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        if result.returncode != 0:
+            details = (
+                result.stderr.strip()
+                or result.stdout.strip()
+                or "hyprctl returned an error."
+            )
+            raise RuntimeError(f"Could not change display scaling: {details}")
+        _, actual_scale = self.read(name)
+        if not math.isclose(actual_scale, scale, rel_tol=1e-3):
+            raise RuntimeError(
+                f"Hyprland left {name} at {actual_scale * 100:g}% scaling "
+                f"instead of {scale * 100:g}%."
+            )
+
+
+class GnomeDisplayScaleBackend(DisplayScaleBackend):
+    key = "gnome"
+    label = "GNOME"
+    BUS_NAME = "org.gnome.Mutter.DisplayConfig"
+    OBJECT_PATH = "/org/gnome/Mutter/DisplayConfig"
+    INTERFACE = "org.gnome.Mutter.DisplayConfig"
+
+    @classmethod
+    def available(cls):
+        return "gnome" in _desktop_tokens()
+
+    @staticmethod
+    def _state():
+        connection = Gio.bus_get_sync(Gio.BusType.SESSION, None)
+        reply = connection.call_sync(
+            GnomeDisplayScaleBackend.BUS_NAME,
+            GnomeDisplayScaleBackend.OBJECT_PATH,
+            GnomeDisplayScaleBackend.INTERFACE,
+            "GetCurrentState",
+            None,
+            None,
+            Gio.DBusCallFlags.NONE,
+            10000,
+            None,
+        )
+        return connection, reply
+
+    @staticmethod
+    def _connectors(logical_monitor):
+        members = logical_monitor.get_child_value(5)
+        return [
+            members.get_child_value(index).get_child_value(0).get_string()
+            for index in range(members.n_children())
+        ]
+
+    def _logical_monitor(self, logical_monitors, output_name=None):
+        primary = None
+        first = None
+        for index in range(logical_monitors.n_children()):
+            monitor = logical_monitors.get_child_value(index)
+            connectors = self._connectors(monitor)
+            if first is None:
+                first = (monitor, connectors)
+            if output_name is not None:
+                if output_name in connectors:
+                    return monitor, connectors
+            elif monitor.get_child_value(4).get_boolean():
+                primary = (monitor, connectors)
+        if output_name is not None:
+            raise RuntimeError(
+                f"GNOME no longer reports the {output_name} display."
+            )
+        if primary is not None:
+            return primary
+        if first is None:
+            raise RuntimeError("GNOME did not report an enabled display.")
+        return first
+
+    def read(self, output_name=None):
+        _, reply = self._state()
+        logical_monitors = reply.get_child_value(2)
+        if logical_monitors.n_children() == 0:
+            raise RuntimeError("GNOME did not report an enabled display.")
+        monitor, connectors = self._logical_monitor(
+            logical_monitors, output_name
+        )
+        scale = monitor.get_child_value(2).get_double()
+        if not math.isfinite(scale) or scale <= 0:
+            raise RuntimeError("GNOME returned an invalid display scale.")
+        name = output_name or (connectors[0] if connectors else "monitor")
+        return name, float(scale)
+
+    def write(self, name, scale):
+        connection, reply = self._state()
+        serial = reply.get_child_value(0)
+        logical_monitors = reply.get_child_value(2)
+        properties = reply.get_child_value(3)
+        monitor_type = logical_monitors.get_type().get_element_type()
+        found = False
+        rebuilt = []
+        for index in range(logical_monitors.n_children()):
+            monitor = logical_monitors.get_child_value(index)
+            connectors = self._connectors(monitor)
+            if name in connectors:
+                found = True
+                monitor_scale = GLib.Variant("d", scale)
+            else:
+                monitor_scale = monitor.get_child_value(2)
+            rebuilt.append(
+                GLib.Variant.new_tuple(
+                    monitor.get_child_value(0),
+                    monitor.get_child_value(1),
+                    monitor_scale,
+                    monitor.get_child_value(3),
+                    monitor.get_child_value(4),
+                    monitor.get_child_value(5),
+                    monitor.get_child_value(6),
+                )
+            )
+        if not found:
+            raise RuntimeError(f"GNOME no longer reports the {name} display.")
+        if not float(scale).is_integer() and shutil.which("gsettings") is not None:
+            subprocess.run(
+                [
+                    "gsettings",
+                    "set",
+                    "org.gnome.mutter",
+                    "experimental-features",
+                    "['scale-monitor-framebuffer']",
+                ],
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+        logical_array = GLib.Variant.new_array(monitor_type, rebuilt)
+        parameters = GLib.Variant.new_tuple(
+            serial, GLib.Variant("u", 1), logical_array, properties
+        )
+        connection.call_sync(
+            self.BUS_NAME,
+            self.OBJECT_PATH,
+            self.INTERFACE,
+            "ApplyMonitorsConfig",
+            parameters,
+            None,
+            Gio.DBusCallFlags.NONE,
+            10000,
+            None,
+        )
+        _, actual_scale = self.read(name)
+        if not math.isclose(actual_scale, scale, rel_tol=1e-3):
+            raise RuntimeError(
+                f"GNOME left {name} at {actual_scale * 100:g}% scaling instead "
+                f"of {scale * 100:g}%."
+            )
+
+
+class XfceDisplayScaleBackend(DisplayScaleBackend):
+    key = "xfce"
+    label = "Xfce"
+    CHANNEL = "displays"
+
+    @classmethod
+    def available(cls):
+        return (
+            "xfce" in _desktop_tokens()
+            and shutil.which("xfconf-query") is not None
+        )
+
+    @staticmethod
+    def _primary_output():
+        if shutil.which("xrandr") is None:
+            raise RuntimeError("Xfce display scaling needs the xrandr command.")
+        result = subprocess.run(
+            ["xrandr", "--query"],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        if result.returncode != 0:
+            details = result.stderr.strip() or "xrandr returned an error."
+            raise RuntimeError(f"Could not inspect display scaling: {details}")
+        primary = None
+        first = None
+        for line in result.stdout.splitlines():
+            match = re.match(r"^(\S+) connected(\s+primary)?", line)
+            if not match:
+                continue
+            if first is None:
+                first = match.group(1)
+            if match.group(2):
+                primary = match.group(1)
+                break
+        output = primary or first
+        if not output:
+            raise RuntimeError("xrandr did not report a connected display.")
+        return output
+
+    def _property(self, output):
+        return f"/Default/{output}/Scale"
+
+    def read(self, output_name=None):
+        output = output_name or self._primary_output()
+        result = subprocess.run(
+            ["xfconf-query", "-c", self.CHANNEL, "-p", self._property(output)],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        if result.returncode != 0:
+            details = result.stderr.strip() or "the display scale is unset."
+            raise RuntimeError(
+                f"Could not read the Xfce display scale: {details}"
+            )
+        try:
+            scale = float(result.stdout.strip())
+        except ValueError as error:
+            raise RuntimeError(
+                f"Xfce returned an invalid display scale: {error}"
+            ) from error
+        if not math.isfinite(scale) or scale <= 0:
+            raise RuntimeError("Xfce returned an invalid display scale.")
+        return output, scale
+
+    def write(self, name, scale):
+        property_path = self._property(name)
+        exists = (
+            subprocess.run(
+                ["xfconf-query", "-c", self.CHANNEL, "-p", property_path],
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=10,
+            ).returncode
+            == 0
+        )
+        command = ["xfconf-query", "-c", self.CHANNEL, "-p", property_path]
+        if exists:
+            command += ["-s", f"{scale:.15g}"]
+        else:
+            command += ["-n", "-t", "double", "-s", f"{scale:.15g}"]
+        result = subprocess.run(
+            command,
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        if result.returncode != 0:
+            details = result.stderr.strip() or "xfconf-query returned an error."
+            raise RuntimeError(f"Could not change display scaling: {details}")
+        _, actual_scale = self.read(name)
+        if not math.isclose(actual_scale, scale, rel_tol=1e-3):
+            raise RuntimeError(
+                f"Xfce left {name} at {actual_scale * 100:g}% scaling instead "
+                f"of {scale * 100:g}%."
+            )
+
+
+_DISPLAY_BACKEND_CACHE = {}
+
+
+def display_scale_backend():
+    if "backend" not in _DISPLAY_BACKEND_CACHE:
+        backend = None
+        for candidate in (
+            HyprlandDisplayScaleBackend,
+            KdeDisplayScaleBackend,
+            GnomeDisplayScaleBackend,
+            XfceDisplayScaleBackend,
+        ):
+            if candidate.available():
+                backend = candidate()
+                break
+        _DISPLAY_BACKEND_CACHE["backend"] = backend
+    return _DISPLAY_BACKEND_CACHE["backend"]
+
+
 class RobloxLauncher(Gtk.Application):
     def __init__(self):
         super().__init__(
@@ -912,7 +1405,8 @@ class RobloxLauncher(Gtk.Application):
         display_scale_title.add_css_class("heading")
         info_page.append(display_scale_title)
         display_scale_message = self.secondary_label(
-            "On KDE Plasma Wayland, Mactolinux switches your primary display "
+            "On KDE Plasma, Hyprland, GNOME, and Xfce, Mactolinux switches "
+            "your primary display "
             "to the scale selected in Settings before Roblox starts. This "
             "lets Roblox render sharply on high-resolution displays and "
             "avoids changing the camera window size during play. Your "
@@ -931,9 +1425,9 @@ class RobloxLauncher(Gtk.Application):
             "3. Keep Mactolinux running until you close Roblox; your previous "
             "display scale is then restored automatically unless you changed "
             "it yourself during play.\n\n"
-            "This automatic switch is available on KDE Plasma Wayland when "
-            "kscreen-doctor is installed. Other desktops and sessions are "
-            "left unchanged.",
+            "This automatic switch is available on KDE Plasma "
+            "(kscreen-doctor), Hyprland (hyprctl), GNOME (Mutter), and Xfce "
+            "(xfconf). Other desktops and sessions are left unchanged.",
             "page-copy",
         )
         display_scale_steps.set_wrap(True)
@@ -1132,7 +1626,7 @@ class RobloxLauncher(Gtk.Application):
                 "Temporarily changes your primary display scale before Roblox "
                 "starts and restores it when Roblox exits, unless you change "
                 "the scale manually during play. Changes apply the next time "
-                "Roblox starts. KDE Plasma Wayland only. " \
+                "Roblox starts. Works on KDE Plasma, Hyprland, GNOME and Xfce. " \
                 "The higher you go the more zoomed in roblox gets, but roblox " \
                 "will become more and more lower quality the more you increase it.",
                 "page-copy",
@@ -1909,14 +2403,7 @@ class RobloxLauncher(Gtk.Application):
             self.display_scale_session_seen = False
 
     def prepare_roblox_display_scale(self):
-        if not os.environ.get("WAYLAND_DISPLAY") or not os.environ.get(
-            "KDE_SESSION_VERSION"
-        ):
-            return None
-        if shutil.which("kscreen-doctor") is None:
-            self.show_display_scale_message(
-                "Automatic display scaling needs KDE's kscreen-doctor command."
-            )
+        if display_scale_backend() is None:
             return None
         if self.running_roblox_processes():
             return None
@@ -1958,85 +2445,21 @@ class RobloxLauncher(Gtk.Application):
 
     @staticmethod
     def read_display_scale(output_name=None):
-        result = subprocess.run(
-            ["kscreen-doctor", "--json"],
-            check=False,
-            capture_output=True,
-            text=True,
-            timeout=10,
-        )
-        if result.returncode != 0:
-            details = result.stderr.strip() or "kscreen-doctor returned an error."
-            raise RuntimeError(f"Could not inspect display scaling: {details}")
-        try:
-            outputs = json.loads(result.stdout)["outputs"]
-        except (json.JSONDecodeError, KeyError, TypeError) as error:
+        backend = display_scale_backend()
+        if backend is None:
             raise RuntimeError(
-                f"Could not read KDE display information: {error}"
-            ) from error
-        if not isinstance(outputs, list):
-            raise RuntimeError("KDE returned an invalid display list.")
-
-        output = next(
-            (
-                candidate
-                for candidate in outputs
-                if isinstance(candidate, dict)
-                and candidate.get("connected") is True
-                and (
-                    candidate.get("name") == output_name
-                    or (
-                        output_name is None
-                        and candidate.get("enabled") is True
-                        and candidate.get("priority") == 1
-                    )
-                )
-            ),
-            None,
-        )
-        if output is None:
-            message = (
-                f"KDE no longer reports the {output_name} display."
-                if output_name is not None
-                else "KDE did not report an enabled primary display."
+                "Automatic display scaling is not available on this desktop."
             )
-            raise RuntimeError(message)
-        name = output.get("name")
-        scale = output.get("scale")
-        if (
-            not isinstance(name, str)
-            or re.fullmatch(r"[A-Za-z0-9_.-]+", name) is None
-            or isinstance(scale, bool)
-            or not isinstance(scale, (int, float))
-            or not math.isfinite(scale)
-            or scale <= 0
-        ):
-            raise RuntimeError("KDE returned invalid primary display settings.")
-        return name, float(scale)
+        return backend.read(output_name)
 
     @staticmethod
     def set_display_scale(name, scale):
-        if re.fullmatch(r"[A-Za-z0-9_.-]+", name) is None:
-            raise RuntimeError("KDE returned an invalid display name.")
-        result = subprocess.run(
-            [
-                "kscreen-doctor",
-                f"output.{name}.scale.{scale:.15g}",
-            ],
-            check=False,
-            capture_output=True,
-            text=True,
-            timeout=10,
-        )
-        if result.returncode != 0:
-            details = result.stderr.strip() or "kscreen-doctor returned an error."
-            raise RuntimeError(f"Could not change display scaling: {details}")
-        _, actual_scale = RobloxLauncher.read_display_scale(name)
-        if not math.isclose(actual_scale, scale):
+        backend = display_scale_backend()
+        if backend is None:
             raise RuntimeError(
-                f"KDE left {name} at {actual_scale * 100:g}% scaling instead "
-                f"of {scale * 100:g}%."
+                "Automatic display scaling is not available on this desktop."
             )
+        return backend.write(name, scale)
 
     def manage_roblox_display_scale(
         self, display_name, original_scale, target_scale
