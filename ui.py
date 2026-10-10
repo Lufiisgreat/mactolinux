@@ -481,7 +481,7 @@ class RobloxLauncher(Gtk.Application):
         self.cookie_save_generation = 0
         self.cookie_save_lock = threading.Lock()
         self.startup_check_started = False
-        self.launcher_startup_check_started = False
+        self.restart_after_launcher_update = False
         self.running_monitor_started = False
         self.fullscreen_window_ids = {}
         self.fullscreen_warning_shown = False
@@ -574,9 +574,27 @@ class RobloxLauncher(Gtk.Application):
         if self.settings["check_updates_on_startup"] and not self.startup_check_started:
             self.startup_check_started = True
             GLib.idle_add(self.startup_update)
-        elif not self.launcher_startup_check_started:
-            self.launcher_startup_check_started = True
-            GLib.idle_add(self.check_launcher_updates)
+
+    def do_shutdown(self):
+        Gtk.Application.do_shutdown(self)
+        if self.restart_after_launcher_update:
+            restart = threading.Timer(1.0, self.restart_launcher)
+            restart.start()
+
+    @staticmethod
+    def restart_launcher():
+        try:
+            subprocess.Popen(
+                ["sh", str(HERE / "ui.sh")],
+                cwd=HERE,
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                start_new_session=True,
+                close_fds=True,
+            )
+        except OSError as error:
+            print(f"Could not restart Mactolinux after updating: {error}", flush=True)
 
     def build_window(self):
         display = Gdk.Display.get_default()
@@ -1069,7 +1087,8 @@ class RobloxLauncher(Gtk.Application):
         update_text.append(self.label("Check for updates on startup"))
         update_text.append(
             self.secondary_label(
-                "Automatically check for a newer Roblox client when the launcher opens.",
+                "Automatically install Mactolinux and Roblox client updates "
+                "when the launcher opens.",
                 "page-copy",
             )
         )
@@ -2320,15 +2339,23 @@ class RobloxLauncher(Gtk.Application):
             self.status_icon.set_from_icon_name("dialog-error-symbolic")
 
     def startup_update(self):
-        return self.start_update(startup=True)
+        return self.check_launcher_updates(startup=True)
 
-    def check_launcher_updates(self, _button=None):
+    def check_launcher_updates(self, _button=None, startup=False):
         if self.job_running:
             return GLib.SOURCE_REMOVE
         self.job_running = True
         self.refresh_state()
-        self.status_title.set_text("Checking for Mactolinux updates")
-        self.status_copy.set_text("Checking GitHub for the latest commit.")
+        self.status_title.set_text(
+            "Checking for Mactolinux updates"
+            if not startup
+            else "Checking for updates"
+        )
+        self.status_copy.set_text(
+            "Checking GitHub for the latest commit."
+            if not startup
+            else "Checking Mactolinux and Roblox client updates."
+        )
         self.status_icon.set_from_icon_name("content-loading-symbolic")
         self.spinner.start()
 
@@ -2364,6 +2391,7 @@ class RobloxLauncher(Gtk.Application):
                     latest_commit,
                     installed_commit,
                     "",
+                    startup,
                 )
             except (
                 OSError,
@@ -2376,12 +2404,15 @@ class RobloxLauncher(Gtk.Application):
                     "",
                     "",
                     str(error),
+                    startup,
                 )
 
         threading.Thread(target=worker, daemon=True).start()
         return GLib.SOURCE_REMOVE
 
-    def finish_launcher_update_check(self, latest_commit, installed_commit, error):
+    def finish_launcher_update_check(
+        self, latest_commit, installed_commit, error, startup=False
+    ):
         self.job_running = False
         self.spinner.stop()
         self.refresh_state()
@@ -2389,6 +2420,14 @@ class RobloxLauncher(Gtk.Application):
             self.status_title.set_text("Could not check Mactolinux updates")
             self.status_copy.set_text(error)
             self.status_icon.set_from_icon_name("dialog-error-symbolic")
+        elif startup and latest_commit != installed_commit:
+            self.start_launcher_update(latest_commit)
+        elif startup:
+            self.status_title.set_text("Checking for Roblox client updates")
+            self.status_copy.set_text(
+                "Mactolinux is up to date. Checking the Roblox client."
+            )
+            self.start_update(startup=True)
         elif not installed_commit:
             self.status_title.set_text("Mactolinux update available")
             self.status_copy.set_text(
@@ -2410,6 +2449,113 @@ class RobloxLauncher(Gtk.Application):
                 "and choose Update to install the latest launcher."
             )
             self.status_icon.set_from_icon_name("software-update-available-symbolic")
+        return GLib.SOURCE_REMOVE
+
+    def start_launcher_update(self, latest_commit):
+        self.job_running = True
+        self.status_title.set_text("Updating Mactolinux")
+        self.status_copy.set_text(
+            "Installing the latest launcher from GitHub. Mactolinux will "
+            "restart before checking the Roblox client."
+        )
+        self.status_icon.set_from_icon_name("content-loading-symbolic")
+        self.spinner.start()
+
+        def worker():
+            log_path = DATA / "ui-launcher-update.log"
+            installer_path = None
+            try:
+                DATA.mkdir(mode=0o700, parents=True, exist_ok=True)
+                os.chmod(DATA, 0o700)
+                installer_url = (
+                    "https://raw.githubusercontent.com/Lufiisgreat/mactolinux/"
+                    f"{latest_commit}/install.sh"
+                )
+                request = urllib.request.Request(
+                    installer_url,
+                    headers={"User-Agent": "Mactolinux"},
+                )
+                with urllib.request.urlopen(request, timeout=30) as response:
+                    if not response.geturl().startswith("https://"):
+                        raise ValueError(
+                            "GitHub redirected the installer to an insecure URL."
+                        )
+                    installer = response.read(1_000_001)
+                if len(installer) > 1_000_000 or not installer.startswith(b"#!/bin/sh"):
+                    raise ValueError("GitHub returned an invalid installer script.")
+                descriptor, installer_path = tempfile.mkstemp(
+                    prefix=".mactolinux-installer.",
+                    suffix=".sh",
+                    dir=DATA,
+                )
+                with os.fdopen(descriptor, "wb") as installer_file:
+                    installer_file.write(installer)
+                with log_path.open("w", encoding="utf-8") as log_file:
+                    result = subprocess.run(
+                        ["sh", installer_path, "--update-noninteractive"],
+                        cwd=HERE,
+                        stdin=subprocess.DEVNULL,
+                        stdout=log_file,
+                        stderr=subprocess.STDOUT,
+                        check=False,
+                    )
+                if result.returncode != 0:
+                    raise RuntimeError(
+                        f"The Mactolinux updater exited with status "
+                        f"{result.returncode}. See {log_path.relative_to(HERE)}."
+                    )
+                GLib.idle_add(
+                    self.finish_launcher_self_update,
+                    True,
+                    "",
+                    latest_commit,
+                    log_path,
+                )
+            except (
+                OSError,
+                urllib.error.URLError,
+                ValueError,
+                RuntimeError,
+            ) as error:
+                GLib.idle_add(
+                    self.finish_launcher_self_update,
+                    False,
+                    str(error),
+                    latest_commit,
+                    log_path,
+                )
+            finally:
+                if installer_path is not None:
+                    try:
+                        os.unlink(installer_path)
+                    except OSError as error:
+                        print(
+                            f"Could not remove temporary Mactolinux installer: {error}",
+                            flush=True,
+                        )
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def finish_launcher_self_update(self, succeeded, error, latest_commit, log_path):
+        self.job_running = False
+        self.spinner.stop()
+        if not succeeded:
+            self.status_title.set_text("Could not update Mactolinux")
+            self.status_copy.set_text(error)
+            self.status_icon.set_from_icon_name("dialog-error-symbolic")
+            return GLib.SOURCE_REMOVE
+
+        self.status_title.set_text("Mactolinux updated")
+        self.status_copy.set_text(
+            f"Updated to {latest_commit[:12]}. Restarting Mactolinux…"
+        )
+        self.status_icon.set_from_icon_name("emblem-ok-symbolic")
+        self.restart_after_launcher_update = True
+        GLib.timeout_add(1200, self.quit_after_launcher_update)
+        return GLib.SOURCE_REMOVE
+
+    def quit_after_launcher_update(self):
+        self.quit()
         return GLib.SOURCE_REMOVE
 
     def start_update(
@@ -2492,10 +2638,6 @@ class RobloxLauncher(Gtk.Application):
                 f"{failure} Log: {log_path.relative_to(HERE)}"
             )
             self.status_icon.set_from_icon_name("dialog-error-symbolic")
-        if startup:
-            if not self.launcher_startup_check_started:
-                self.launcher_startup_check_started = True
-                GLib.idle_add(self.check_launcher_updates)
         return GLib.SOURCE_REMOVE
 
     def confirm_uninstall(self, _button):

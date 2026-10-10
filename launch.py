@@ -315,14 +315,12 @@ class RobloxLaunchWindow(Gtk.Application):
         current_player_pids = self.find_player_processes()
         if not self.player_detected and current_player_pids - self.initial_player_pids:
             self.player_detected = True
-            self.status.set_text(
-                "Roblox is running. Live output continues below; "
-                "scroll up to review earlier logs."
-            )
+            self.status.set_text("Roblox is running. Closing this window…")
             self.spinner.stop()
-
+            GLib.timeout_add(1200, self.close_window)
+            return GLib.SOURCE_REMOVE
         return_code = self.process.poll()
-        if return_code is None or (self.player_detected and current_player_pids):
+        if return_code is None:
             return GLib.SOURCE_CONTINUE
         if return_code != 0:
             self.status.set_text(
@@ -333,13 +331,6 @@ class RobloxLaunchWindow(Gtk.Application):
             return GLib.SOURCE_REMOVE
 
         self.read_new_output()
-        if self.player_detected:
-            self.status.set_text(
-                "Roblox has exited. Complete launch output remains below."
-            )
-            self.spinner.stop()
-            return GLib.SOURCE_REMOVE
-
         if self.launch_finished_at is None:
             self.launch_finished_at = time.monotonic()
         if time.monotonic() - self.launch_finished_at < 30:

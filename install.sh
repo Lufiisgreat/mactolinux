@@ -221,7 +221,20 @@ if [ -e "$DESKTOP_FILE" ] &&
     fail "Refusing to replace the existing desktop entry $DESKTOP_FILE."
 fi
 
-confirm_install
+case "${1:-}" in
+    --update-noninteractive)
+        [ "$#" -eq 1 ] || fail "Usage: install.sh --update-noninteractive"
+        install_mode=update
+        [ -x "$INSTALL_DIR/RobloxLinux.AppImage" ] ||
+            fail "Mactolinux is not installed at $INSTALL_DIR."
+        ;;
+    "")
+        confirm_install
+        ;;
+    *)
+        fail "Unknown installer option: $1"
+        ;;
+esac
 if [ "$install_mode" = install ]; then
     read_appimage_path
 fi
@@ -273,7 +286,9 @@ if ! tar -xzf "$TEMP_DIR/source.tar.gz" \
     fail "The downloaded source archive could not be extracted."
 fi
 
-for source_file in ui.py launch.py mods.py ui.sh launch.sh run.sh update-roblox.sh uninstaller.sh FFlags.json roblox-linux-release.png; do
+for source_file in \
+    ui.py launch.py mods.py ui.sh launch.sh run.sh update-roblox.sh \
+    uninstaller.sh FFlags.json roblox-linux-release.png; do
     [ -f "$TEMP_DIR/source/$source_file" ] ||
         fail "The source archive is missing $source_file."
 done
@@ -281,7 +296,8 @@ done
 step "Installing to $INSTALL_DIR"
 mkdir -p "$INSTALL_DIR" "$BIN_DIR" "$APPLICATIONS_DIR"
 
-for source_file in ui.py launch.py mods.py FFlags.json roblox-linux-release.png README.md; do
+for source_file in \
+    ui.py launch.py mods.py FFlags.json roblox-linux-release.png README.md; do
     if [ "$source_file" = "FFlags.json" ] && [ -e "$INSTALL_DIR/FFlags.json" ]; then
         continue
     fi
