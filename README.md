@@ -2,6 +2,12 @@
 
 An unofficial GTK launcher for the Roblox macOS client on x86-64 Linux.
 
+## Screenshots
+
+![Mactolinux launcher page](screenshots/launcher.png)
+
+![Roblox Discover page in Mactolinux](screenshots/discover.png)
+
 ## Install
 
 Run this command in a terminal:
@@ -10,7 +16,7 @@ Run this command in a terminal:
 curl -fsSL https://raw.githubusercontent.com/Lufiisgreat/mactolinux/main/install.sh | sh
 ```
 
-The installer menu offers **Install**, **Update**, and **Cancel**. Choose an
+The installer menu offers **Install**, **Update**, and **Quit**. Choose an
 option, then type `y` to confirm (or `no` to cancel). Install looks for
 `RobloxLinux.AppImage` in `~/Downloads` and its subfolders. If it cannot find
 the file, choose to search again, enter the path yourself, or cancel. You can
@@ -22,11 +28,13 @@ application menu and creates the `mactolinux` command in
 Choose **Update** here to refresh Mactolinux itself. The launcher's
 **Check for Roblox updates** button updates the Roblox client, not Mactolinux.
 
-The Launcher page has separate update checks: **Check for Roblox updates** updates
-the Roblox client, while **Check for Mactolinux updates** checks GitHub for a
-new launcher commit. To install a newer launcher commit, run the installer
-again and choose **Update**. Mactolinux also checks for a newer launcher
-commit every time it starts; this check does not install updates automatically.
+The Launcher page has separate update actions: **Check for Roblox updates**
+updates the Roblox client, while **Check for Mactolinux updates** checks GitHub
+and automatically installs a newer launcher commit, then restarts Mactolinux.
+When **Check for updates on startup** is enabled, Mactolinux automatically
+installs launcher updates from GitHub and restarts, then checks and updates the
+Roblox client from the GUI. When startup checks are disabled, neither update
+is checked automatically.
 
 The launcher requires Python 3, GTK 4, and Python GObject introspection. On
 CachyOS, install the required packages with:
@@ -56,12 +64,25 @@ the desktop Secret Service/keyring, such as KDE Wallet. Mactolinux does not
 store your Roblox password. Without keyring support, the embedded browser
 does not save your login. Game Play links from Discover are passed directly
 to Mactolinux's Roblox AppImage, not the system's default `roblox-player` or
-`roblox` URL handler.
+`roblox` URL handler. Roblox `games/start` links are handed to the client,
+including HTTPS links and experience-start links; the latter are converted to
+Roblox's direct `roblox://placeId=` format while preserving other launch
+parameters. Friend-join links are passed through unchanged.
 
 `wmctrl` lets the launcher fullscreen Roblox while its player process is
 running and restore the window when it exits. In KDE Plasma Wayland, this
 requires Roblox to run as an XWayland window; native Wayland windows may not
 be controllable by `wmctrl`.
+
+On KDE Plasma Wayland, choose the Roblox display scale in Settings (100%,
+150%, 175%, or 200%); changes apply the next time Roblox starts. Mactolinux
+applies the selected scale to the primary display before launching Roblox,
+then restores the previous scale after the Roblox process exits. Changing
+scale before the client starts avoids resizing its camera window during play
+and prevents the desktop from enlarging Roblox's framebuffer on high-DPI
+displays. If you change the display scale yourself while Roblox is running,
+Mactolinux leaves that new scale in place. Keep the launcher running until
+Roblox exits so its background monitor can restore the display scale.
 
 The FFlags page also has a user modifications folder. Put replacement files
 there with directory paths matching their locations inside
@@ -85,4 +106,6 @@ keyring.
 
 - This project is unofficial and is not affiliated with Roblox.
 - Settings and logs stay in the local `DO_NOT_SHARE` folder and should never
-  be uploaded. The Roblox session cookie is encrypted by the desktop keyring.
+  be uploaded. `discover-handoff.log` records only link hosts, paths, and
+  handoff stages; it omits query parameters. The Roblox session cookie is
+  encrypted by the desktop keyring.
