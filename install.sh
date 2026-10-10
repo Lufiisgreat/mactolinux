@@ -33,7 +33,7 @@ banner() {
     printf '  │          ROBLOX ON LINUX · X86-64            │\n'
     printf '  ╰──────────────────────────────────────────────╯%s\n' "$RESET"
     printf '  Play the macOS Roblox client on your Linux desktop.\n'
-    printf '  %sA simple, user-only setup. No sudo required.%s\n\n' "$DIM" "$RESET"
+    printf '  %sA simple setup; system dependencies may require sudo.%s\n\n' "$DIM" "$RESET"
 }
 
 step() {
@@ -201,13 +201,6 @@ for command_name in curl tar python3 install mktemp readlink grep sed find; do
         fail "Required command '$command_name' was not found."
 done
 
-if ! python3 -c 'import gi; gi.require_version("Gtk", "4.0"); from gi.repository import Gtk' >/dev/null 2>&1; then
-    printf 'GTK 4 and Python GObject introspection are required.\n'
-    printf 'On Ubuntu or Debian, install them with:\n\n'
-    printf '  sudo apt install python3 python3-gi gir1.2-gtk-4.0\n\n'
-    exit 1
-fi
-
 DESKTOP_FILE="$APPLICATIONS_DIR/com.robloxlinux.release.desktop"
 LEGACY_DESKTOP_FILE="$APPLICATIONS_DIR/mactolinux.desktop"
 BIN_LINK="$BIN_DIR/mactolinux"
@@ -237,6 +230,66 @@ case "${1:-}" in
 esac
 if [ "$install_mode" = install ]; then
     read_appimage_path
+fi
+
+ensure_gtk_dependencies() {
+    if python3 -c 'import gi; gi.require_version("Gtk", "4.0"); from gi.repository import Gtk' >/dev/null 2>&1; then
+        return
+    fi
+
+    if [ "$1" = noninteractive ]; then
+        fail "GTK 4 and Python GObject introspection are missing. Run install.sh interactively to install them."
+    fi
+
+    [ -r /etc/os-release ] ||
+        fail "Could not identify this Linux distribution to install GTK 4 dependencies."
+    . /etc/os-release
+    distro_ids="$ID ${ID_LIKE:-}"
+
+    step "Installing GTK 4 launcher dependencies"
+    case "$distro_ids" in
+        *ubuntu*|*debian*|*zorin*|*linuxmint*|*pop*)
+            if [ "$(id -u)" -eq 0 ]; then
+                apt-get install python3-gi gir1.2-gtk-4.0 </dev/tty
+            elif command -v sudo >/dev/null 2>&1; then
+                sudo apt-get install python3-gi gir1.2-gtk-4.0 </dev/tty
+            else
+                fail "GTK dependencies are missing and sudo is unavailable. Install python3-gi and gir1.2-gtk-4.0 with apt."
+            fi
+            ;;
+        *fedora*|*rhel*|*centos*)
+            if [ "$(id -u)" -eq 0 ]; then
+                dnf install python3-gobject gtk4 </dev/tty
+            elif command -v sudo >/dev/null 2>&1; then
+                sudo dnf install python3-gobject gtk4 </dev/tty
+            else
+                fail "GTK dependencies are missing and sudo is unavailable. Install python3-gobject and gtk4 with dnf."
+            fi
+            ;;
+        *arch*)
+            if [ "$(id -u)" -eq 0 ]; then
+                pacman -S --needed python gtk4 python-gobject </dev/tty
+            elif command -v sudo >/dev/null 2>&1; then
+                sudo pacman -S --needed python gtk4 python-gobject </dev/tty
+            else
+                fail "GTK dependencies are missing and sudo is unavailable. Install python, gtk4, and python-gobject with pacman."
+            fi
+            ;;
+        *)
+            fail "Automatic GTK dependency installation is not configured for $ID. Install GTK 4 and Python GObject introspection with your distribution's package manager."
+            ;;
+    esac
+
+    if ! python3 -c 'import gi; gi.require_version("Gtk", "4.0"); from gi.repository import Gtk' >/dev/null 2>&1; then
+        fail "GTK dependencies were installed, but Python still cannot load GTK 4. Check that the system python3 package is being used."
+    fi
+    success "GTK 4 launcher dependencies are available."
+}
+
+if [ "${1:-}" = "--update-noninteractive" ]; then
+    ensure_gtk_dependencies noninteractive
+else
+    ensure_gtk_dependencies interactive
 fi
 
 TEMP_DIR=$(mktemp -d "${TMPDIR:-/tmp}/mactolinux-install.XXXXXX") ||
