@@ -77,6 +77,28 @@ cancel_install() {
     exit 0
 }
 
+choose_uninstall_mode() {
+    printf '\n%s╭────────────────────────────────────────────────╮%s\n' "$BLUE" "$RESET"
+    printf '│  %-46s│\n' 'What should be removed?'
+    printf '│  %-46s│\n' 'Roblox only   Client and shaders; keep settings'
+    printf '│  %-46s│\n' 'Everything    All Mactolinux files and data'
+    printf '╰────────────────────────────────────────────────╯\n'
+    printf '\n%s❯%s [1] Roblox only    [2] Everything    [3] Cancel\n' "$CYAN" "$RESET"
+    printf '\nChoose an option [1-3]: '
+    IFS= read -r choice </dev/tty || cancel_install
+    case "$choice" in
+        1|r|R|roblox|Roblox|roblox-only)
+            uninstall_mode=roblox-only
+            uninstall_prompt='remove the Roblox client and prepared shaders, keeping your settings and mods'
+            ;;
+        2|e|E|everything|Everything)
+            uninstall_mode=everything
+            uninstall_prompt='remove everything, including your settings, mods, AppImage, and launcher files'
+            ;;
+        *) cancel_install ;;
+    esac
+}
+
 confirm_install() {
     if [ ! -r /dev/tty ]; then
         fail "Run this installer from a terminal so you can choose an option and confirm with y."
@@ -86,19 +108,35 @@ confirm_install() {
     printf '│%14s%sWelcome to Mactolinux%s%15s│\n' '' "$BOLD" "$RESET" ''
     printf '│  %-48s│\n' 'Setup · choose an action'
     printf '├──────────────────────────────────────────────────┤\n'
-    printf '│  %-48s│\n' 'Install  Set up the launcher and Roblox client'
-    printf '│  %-48s│\n' 'Update   Refresh launcher files; keep your data'
-    printf '│  %-48s│\n' 'Quit     Leave everything unchanged'
+    printf '│  %-48s│\n' 'Install   Set up the launcher and Roblox client'
+    printf '│  %-48s│\n' 'Update    Refresh launcher files; keep your data'
+    printf '│  %-48s│\n' 'Uninstall Remove Roblox or all of Mactolinux'
+    printf '│  %-48s│\n' 'Quit      Leave everything unchanged'
     printf '╰──────────────────────────────────────────────────╯\n'
-    printf '\n%s❯%s [1] Install     [2] Update     [3] Quit\n' "$CYAN" "$RESET"
-    printf '\nChoose an option [1-3]: '
+    printf '\n%s❯%s [1] Install  [2] Update  [3] Uninstall  [4] Quit\n' "$CYAN" "$RESET"
+    printf '\nChoose an option [1-4]: '
     IFS= read -r choice </dev/tty || cancel_install
     case "$choice" in
         1|i|I|install|Install) install_mode=install ;;
         2|u|U|update|Update) install_mode=update ;;
-        3|q|Q|quit|Quit) cancel_install ;;
+        3|uninstall|Uninstall) install_mode=uninstall ;;
+        4|q|Q|quit|Quit) cancel_install ;;
         *) cancel_install ;;
     esac
+
+    if [ "$install_mode" = uninstall ]; then
+        [ -f "$INSTALL_DIR/uninstaller.sh" ] ||
+            fail "Mactolinux is not installed at $INSTALL_DIR. Nothing to uninstall."
+        choose_uninstall_mode
+        printf '\nThis will %s. Confirm? Type y or no [y/no]: ' "$uninstall_prompt"
+        IFS= read -r confirmation </dev/tty || cancel_install
+        case "$confirmation" in
+            y|Y|yes|YES|Yes) ;;
+            n|N|no|NO|No) cancel_install ;;
+            *) cancel_install ;;
+        esac
+        return
+    fi
 
     if [ "$install_mode" = update ]; then
         [ -x "$INSTALL_DIR/RobloxLinux.AppImage" ] ||
@@ -237,6 +275,28 @@ if [ -e "$DESKTOP_FILE" ] &&
     fail "Refusing to replace the existing desktop entry $DESKTOP_FILE."
 fi
 
+run_uninstall() {
+    if command -v xdg-user-dir >/dev/null 2>&1; then
+        shortcut_dir=$(xdg-user-dir DESKTOP 2>/dev/null || :)
+    else
+        shortcut_dir=""
+    fi
+    [ -n "$shortcut_dir" ] || shortcut_dir="$HOME/Desktop"
+    shortcut_path="$shortcut_dir/roblox-linux-release.desktop"
+
+    step "Uninstalling ($uninstall_mode)"
+    if sh "$INSTALL_DIR/uninstaller.sh" "$uninstall_mode" "$shortcut_path"; then
+        if [ "$uninstall_mode" = everything ]; then
+            success "Mactolinux has been removed."
+        else
+            success "Roblox has been uninstalled."
+        fi
+    else
+        fail "The uninstaller reported an error."
+    fi
+    exit 0
+}
+
 case "${1:-}" in
     --update-noninteractive)
         [ "$#" -eq 1 ] || fail "Usage: install.sh --update-noninteractive"
@@ -251,6 +311,9 @@ case "${1:-}" in
         fail "Unknown installer option: $1"
         ;;
 esac
+if [ "$install_mode" = uninstall ]; then
+    run_uninstall
+fi
 if [ "$install_mode" = install ]; then
     read_appimage_path
 fi

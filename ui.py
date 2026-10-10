@@ -2093,8 +2093,9 @@ class RobloxLauncher(Gtk.Application):
         wmctrl = shutil.which("wmctrl")
         if wmctrl is None:
             self.show_fullscreen_warning(
-                "Automatic fullscreen needs wmctrl. On CachyOS, install it "
-                "with `sudo pacman -S wmctrl`."
+                "Automatic fullscreen needs wmctrl. Install it with your "
+                "package manager, for example `sudo dnf install wmctrl`, "
+                "`sudo apt install wmctrl`, or `sudo pacman -S wmctrl`."
             )
             return
 
