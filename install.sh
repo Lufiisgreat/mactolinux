@@ -237,7 +237,7 @@ ensure_gtk_dependencies() {
         return
     fi
 
-    if [ "$1" = noninteractive ]; then
+    if [ "${1:-}" = noninteractive ]; then
         fail "GTK 4 and Python GObject introspection are missing. Run install.sh interactively to install them."
     fi
 
@@ -265,6 +265,12 @@ ensure_gtk_dependencies() {
     fi
     success "GTK 4 launcher dependencies are available."
 }
+
+if [ "${1:-}" = "--update-noninteractive" ]; then
+    ensure_gtk_dependencies noninteractive
+else
+    ensure_gtk_dependencies interactive
+fi
 
     if [ "$1" = noninteractive ]; then
         fail "GTK 4 and Python GObject introspection are missing. Run install.sh interactively to install them."
@@ -313,7 +319,7 @@ ensure_gtk_dependencies() {
         fail "GTK dependencies were installed, but Python still cannot load GTK 4. Check that the system python3 package is being used."
     fi
     success "GTK 4 launcher dependencies are available."
-}
+
 
 if [ "${1:-}" = "--update-noninteractive" ]; then
     ensure_gtk_dependencies noninteractive
