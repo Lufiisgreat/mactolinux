@@ -198,6 +198,11 @@ class RobloxLaunchWindow(Gtk.Application):
         logs.add_css_class("log-panel")
         content.append(logs)
 
+        footer = Gtk.Label(label=f"Version {__version__}")
+        footer.add_css_class("footer")
+        footer.set_halign(Gtk.Align.CENTER)
+        content.append(footer)
+
         log_header = Gtk.Box(
             orientation=Gtk.Orientation.HORIZONTAL, spacing=8
         )

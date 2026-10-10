@@ -1178,6 +1178,15 @@ class RobloxLauncher(Gtk.Application):
         self.sidebar_play_button.set_margin_start(4)
         self.sidebar_play_button.set_margin_end(4)
         self.sidebar.append(self.sidebar_play_button)
+
+        self.sidebar_spacer = Gtk.Box()
+        self.sidebar_spacer.set_vexpand(True)
+        self.sidebar.append(self.sidebar_spacer)
+        self.sidebar_version = self.secondary_label(
+            f"Version {__version__}", "footer"
+        )
+        self.sidebar_version.set_halign(Gtk.Align.CENTER)
+        self.sidebar.append(self.sidebar_version)
         self.stack = Gtk.Stack()
         self.stack.set_hexpand(True)
         self.stack.set_vexpand(True)
