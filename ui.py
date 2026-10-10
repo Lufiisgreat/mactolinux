@@ -73,12 +73,21 @@ ROBLOX_SESSION_COOKIE = ".ROBLOSECURITY"
 def summarize_discover_uri(uri):
     try:
         parsed_uri = urlsplit(uri)
-        path = re.sub(r"\d+", "<id>", parsed_uri.path)
+        scheme = parsed_uri.scheme.casefold() or "<none>"
+        if scheme in ("roblox", "roblox-player"):
+            path = "<opaque>"
+        else:
+            path = re.sub(r"\d+", "<id>", parsed_uri.path)
     except ValueError:
         return "invalid URI"
+    host = (
+        "<none>"
+        if scheme in ("roblox", "roblox-player")
+        else (parsed_uri.hostname or "<none>").casefold()
+    )
     return (
-        f"scheme={parsed_uri.scheme.casefold() or '<none>'} "
-        f"host={(parsed_uri.hostname or '<none>').casefold()} path={path or '/'}"
+        f"scheme={scheme} "
+        f"host={host} path={path or '/'}"
     )
 
 

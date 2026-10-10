@@ -21,4 +21,4 @@ if ! python3 -c 'import gi; gi.require_version("Gtk", "4.0"); from gi.repository
     exit 1
 fi
 
-exec python3 "$HERE/launch.py"
+exec python3 "$HERE/launch.py" "$@"

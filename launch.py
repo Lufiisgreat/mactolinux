@@ -127,6 +127,7 @@ class RobloxLaunchWindow(Gtk.Application):
         self.log_file = None
         self.log_reader = None
         self.initial_player_pids = set()
+        self.player_detected = False
         self.launch_finished_at = None
 
     def do_activate(self):
@@ -144,10 +145,10 @@ class RobloxLaunchWindow(Gtk.Application):
         )
 
         self.window = Gtk.ApplicationWindow(application=self, title="Mactolinux")
-        self.window.set_default_size(680, 560)
+        self.window.set_default_size(860, 700)
         content = Gtk.Box(
             orientation=Gtk.Orientation.VERTICAL,
-            spacing=18,
+            spacing=12,
         )
         content.add_css_class("launch-content")
         self.window.set_child(content)
@@ -159,7 +160,6 @@ class RobloxLaunchWindow(Gtk.Application):
         header.set_title_widget(title)
 
         hero = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
-        hero.set_vexpand(True)
         hero.set_halign(Gtk.Align.FILL)
         hero.add_css_class("launch-card")
         content.append(hero)
@@ -193,7 +193,8 @@ class RobloxLaunchWindow(Gtk.Application):
         hero.append(self.status)
 
         logs = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
-        logs.set_size_request(-1, 170)
+        logs.set_vexpand(True)
+        logs.set_size_request(-1, 260)
         logs.add_css_class("log-panel")
         content.append(logs)
 
@@ -219,7 +220,7 @@ class RobloxLaunchWindow(Gtk.Application):
         self.log_view.set_editable(False)
         self.log_view.set_cursor_visible(False)
         self.log_view.set_monospace(True)
-        self.log_view.set_wrap_mode(Gtk.WrapMode.WORD_CHAR)
+        self.log_view.set_wrap_mode(Gtk.WrapMode.NONE)
         self.log_view.add_css_class("log-view")
         scroller.set_child(self.log_view)
 
@@ -277,10 +278,21 @@ class RobloxLaunchWindow(Gtk.Application):
             self.append_log(text)
 
     def append_log(self, text):
+        adjustment = (
+            self.log_view.get_parent().get_vadjustment()
+            if self.log_view.get_parent() is not None
+            else None
+        )
+        follow_output = (
+            adjustment is not None
+            and adjustment.get_value() + adjustment.get_page_size()
+            >= adjustment.get_upper() - 8
+        )
         end = self.log_buffer.get_end_iter()
         self.log_buffer.insert(end, text)
-        end = self.log_buffer.get_end_iter()
-        self.log_view.scroll_to_iter(end, 0.0, False, 0.0, 1.0)
+        if follow_output:
+            end = self.log_buffer.get_end_iter()
+            self.log_view.scroll_to_iter(end, 0.0, False, 0.0, 1.0)
         return GLib.SOURCE_REMOVE
 
     @staticmethod
@@ -301,18 +313,29 @@ class RobloxLaunchWindow(Gtk.Application):
     def check_launch(self):
         self.read_new_output()
         current_player_pids = self.find_player_processes()
-        if current_player_pids - self.initial_player_pids:
-            self.status.set_text("Roblox is running. Closing this window…")
+        if not self.player_detected and current_player_pids - self.initial_player_pids:
+            self.player_detected = True
+            self.status.set_text(
+                "Roblox is running. Live output continues below; "
+                "scroll up to review earlier logs."
+            )
             self.spinner.stop()
-            GLib.timeout_add(1200, self.close_window)
-            return GLib.SOURCE_REMOVE
 
         return_code = self.process.poll()
-        if return_code is None:
+        if return_code is None or (self.player_detected and current_player_pids):
             return GLib.SOURCE_CONTINUE
         if return_code != 0:
             self.status.set_text(
-                f"Roblox exited with status {return_code}. Review the output below."
+                f"Roblox launch exited with status {return_code}. "
+                "Complete output remains below."
+            )
+            self.spinner.stop()
+            return GLib.SOURCE_REMOVE
+
+        self.read_new_output()
+        if self.player_detected:
+            self.status.set_text(
+                "Roblox has exited. Complete launch output remains below."
             )
             self.spinner.stop()
             return GLib.SOURCE_REMOVE
