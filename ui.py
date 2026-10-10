@@ -56,6 +56,7 @@ TEXTURE_FLAGS = {
 DESKTOP_FILE_NAME = "roblox-linux-release.desktop"
 DESKTOP_SHORTCUT_MARKER = "X-RobloxLinuxRelease=true"
 APP_NAME = "Mactolinux"
+__version__ = "0.66patch1"
 ROBLOX_DISPLAY_SCALES = (1.0, 1.5, 1.75, 2.0)
 ROBLOX_SESSION_SCHEMA = (
     Secret.Schema.new(
@@ -3251,10 +3252,6 @@ class RobloxLauncher(Gtk.Application):
             self.status_title.set_text("Could not start Roblox")
             self.status_copy.set_text(str(error))
             return False
-
-
-# Version 0.66patch1
-__version__ = "0.66patch1"
 
 
 if __name__ == "__main__":
