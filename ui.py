@@ -70,6 +70,37 @@ ROBLOX_SESSION_ATTRIBUTES = {"application": "mactolinux"}
 ROBLOX_SESSION_COOKIE = ".ROBLOSECURITY"
 
 
+def summarize_discover_uri(uri):
+    try:
+        parsed_uri = urlsplit(uri)
+        path = re.sub(r"\d+", "<id>", parsed_uri.path)
+    except ValueError:
+        return "invalid URI"
+    return (
+        f"scheme={parsed_uri.scheme.casefold() or '<none>'} "
+        f"host={(parsed_uri.hostname or '<none>').casefold()} path={path or '/'}"
+    )
+
+
+def log_discover_handoff(event, details):
+    try:
+        DATA.mkdir(mode=0o700, parents=True, exist_ok=True)
+        os.chmod(DATA, 0o700)
+        log_path = DATA / "discover-handoff.log"
+        descriptor = os.open(
+            log_path,
+            os.O_WRONLY | os.O_CREAT | os.O_APPEND,
+            0o600,
+        )
+        with os.fdopen(descriptor, "a", encoding="utf-8") as log_file:
+            log_file.write(
+                f"{time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())} "
+                f"{event}: {details}\n"
+            )
+    except OSError as error:
+        print(f"Could not write Discover launch diagnostics: {error}", flush=True)
+
+
 def is_roblox_host(hostname):
     hostname = (hostname or "").casefold()
     return hostname == "roblox.com" or hostname.endswith(".roblox.com")
@@ -1584,7 +1615,30 @@ class RobloxLauncher(Gtk.Application):
         request = navigation_action.get_request()
         uri = request.get_uri()
         try:
-            scheme = urlsplit(uri).scheme.casefold()
+            page_uri = web_view.get_uri() or ""
+        except (GLib.Error, RuntimeError):
+            page_uri = ""
+        try:
+            target_scheme = urlsplit(uri).scheme.casefold()
+            page_host = urlsplit(page_uri).hostname
+            target_host = urlsplit(uri).hostname
+        except ValueError:
+            target_scheme = ""
+            page_host = None
+            target_host = None
+        if (
+            target_scheme in ("roblox", "roblox-player")
+            or is_roblox_host(page_host)
+            or is_roblox_host(target_host)
+        ):
+            log_discover_handoff(
+                "policy",
+                f"type={decision_type.value_nick} "
+                f"page[{summarize_discover_uri(page_uri)}] "
+                f"target[{summarize_discover_uri(uri)}]",
+            )
+        try:
+            scheme = target_scheme or urlsplit(uri).scheme.casefold()
         except ValueError:
             self.show_discover_message("Roblox requested an invalid game link.")
             decision.ignore()
@@ -1642,6 +1696,10 @@ class RobloxLauncher(Gtk.Application):
         except ValueError as error:
             self.show_discover_message(f"Could not read the Roblox game link: {error}")
             return
+        log_discover_handoff(
+            "join-request",
+            summarize_discover_uri(launch_uri),
+        )
         try:
             started = self.play(None, launch_uri)
         except (OSError, ValueError, RuntimeError) as error:
@@ -2559,6 +2617,10 @@ class RobloxLauncher(Gtk.Application):
         display_scale = None
         display_scale_monitor_started = False
         try:
+            log_discover_handoff(
+                "client-launch",
+                "game-uri-present" if launch_uri is not None else "no-game-uri",
+            )
             if self.settings["modifications_enabled"]:
                 mods.apply_modifications()
             DATA.mkdir(mode=0o700, parents=True, exist_ok=True)
