@@ -1008,6 +1008,8 @@ class RobloxLauncher(Gtk.Application):
         self.cookie_save_lock = threading.Lock()
         self.startup_check_started = False
         self.restart_after_launcher_update = False
+        self.queued_launch = False
+        self.queued_launch_uri = None
         self.running_monitor_started = False
         self.fullscreen_window_ids = {}
         self.fullscreen_warning_shown = False
@@ -2410,8 +2412,9 @@ class RobloxLauncher(Gtk.Application):
             )
         else:
             self.version_badge.set_text("Roblox client is not installed yet")
-        self.play_button.set_sensitive(not self.job_running)
-        self.sidebar_play_button.set_sensitive(not self.job_running)
+        # Play stays clickable during setup; it queues the launch.
+        self.play_button.set_sensitive(True)
+        self.sidebar_play_button.set_sensitive(True)
         self.terminate_button.set_sensitive(not self.job_running)
         self.update_button.set_sensitive(not self.job_running)
         self.launcher_update_button.set_sensitive(not self.job_running)
@@ -2978,6 +2981,7 @@ class RobloxLauncher(Gtk.Application):
             self.status_icon.set_from_icon_name("emblem-ok-symbolic")
         else:
             self.start_launcher_update(latest_commit)
+        self.run_queued_launch()
         return GLib.SOURCE_REMOVE
 
     def start_launcher_update(self, latest_commit):
@@ -3072,6 +3076,7 @@ class RobloxLauncher(Gtk.Application):
             self.status_title.set_text("Could not update Mactolinux")
             self.status_copy.set_text(error)
             self.status_icon.set_from_icon_name("dialog-error-symbolic")
+            self.run_queued_launch()
             return GLib.SOURCE_REMOVE
 
         self.status_title.set_text("Mactolinux updated")
@@ -3208,11 +3213,19 @@ class RobloxLauncher(Gtk.Application):
         self.refresh_state()
         if startup:
             self.loading_spinner.start()
-        self.status_title.set_text("Checking for updates")
-        self.status_copy.set_text(
-            "Refreshing the AppImage and the Roblox client. This can take a "
-            "moment if a new release is available."
-        )
+        if installation_complete():
+            self.status_title.set_text("Checking for updates")
+            self.status_copy.set_text(
+                "Refreshing the AppImage and the Roblox client. This can take a "
+                "moment if a new release is available."
+            )
+        else:
+            self.status_title.set_text("Setting up Roblox")
+            self.status_copy.set_text(
+                "First-time setup downloads the Roblox client and prepares "
+                "shaders, which can take several minutes. Press Play once and "
+                "Roblox will start when it finishes."
+            )
         self.status_icon.set_from_icon_name("content-loading-symbolic")
         self.spinner.start()
 
@@ -3286,6 +3299,8 @@ class RobloxLauncher(Gtk.Application):
             self.status_copy.set_text(summary)
             self.status_icon.set_from_icon_name("emblem-ok-symbolic")
             if launch_after_update:
+                self.queued_launch = False
+                self.queued_launch_uri = None
                 self.launch_client(launch_uri)
         else:
             self.status_title.set_text("Could not check or update Roblox")
@@ -3404,11 +3419,31 @@ class RobloxLauncher(Gtk.Application):
             self.status_copy.set_text(details)
             self.status_icon.set_from_icon_name("dialog-error-symbolic")
         self.stack.set_visible_child_name("launcher")
+        if succeeded:
+            self.run_queued_launch()
+        else:
+            self.queued_launch = False
+            self.queued_launch_uri = None
         return GLib.SOURCE_REMOVE
+
+    def run_queued_launch(self):
+        if not self.queued_launch or self.job_running:
+            return
+        uri = self.queued_launch_uri
+        self.queued_launch = False
+        self.queued_launch_uri = None
+        self.play(None, uri)
 
     def play(self, _button, launch_uri=None):
         if self.job_running:
-            return False
+            self.queued_launch = True
+            if launch_uri is not None:
+                self.queued_launch_uri = launch_uri
+            self.status_copy.set_text(
+                "Roblox will start automatically when setup finishes. "
+                "No need to click Play again."
+            )
+            return True
         if not APPIMAGE.is_file() or not os.access(APPIMAGE, os.X_OK):
             self.status_title.set_text("Cannot reinstall Roblox")
             self.status_copy.set_text(
