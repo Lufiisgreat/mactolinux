@@ -1010,6 +1010,8 @@ class RobloxLauncher(Gtk.Application):
         self.restart_after_launcher_update = False
         self.queued_launch = False
         self.queued_launch_uri = None
+        self.fresh_install_launch = False
+        self.setup_screen_active = False
         self.running_monitor_started = False
         self.fullscreen_window_ids = {}
         self.fullscreen_warning_shown = False
@@ -1541,7 +1543,44 @@ class RobloxLauncher(Gtk.Application):
         self.loading_copy.set_halign(Gtk.Align.CENTER)
         self.loading_copy.set_wrap(True)
         checking_page.append(self.loading_copy)
+        setup_page = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=16)
+        setup_page.add_css_class("content")
+        setup_page.set_valign(Gtk.Align.CENTER)
+        setup_page.set_halign(Gtk.Align.CENTER)
+        self.stack.add_named(setup_page, "setup")
+        self.setup_spinner = Gtk.Spinner()
+        self.setup_spinner.set_size_request(56, 56)
+        self.setup_spinner.set_halign(Gtk.Align.CENTER)
+        setup_page.append(self.setup_spinner)
+        setup_title = self.label("Setting up Roblox")
+        setup_title.add_css_class("page-title")
+        setup_title.set_halign(Gtk.Align.CENTER)
+        setup_page.append(setup_title)
+        setup_copy = self.secondary_label(
+            "Downloading the Roblox client and preparing shaders. This can "
+            "take several minutes the first time. The launcher will appear "
+            "when it's done.",
+            "page-copy",
+        )
+        setup_copy.set_xalign(0.5)
+        setup_copy.set_halign(Gtk.Align.CENTER)
+        setup_copy.set_wrap(True)
+        setup_copy.set_max_width_chars(48)
+        setup_page.append(setup_copy)
         self.show_page(None, "launcher")
+
+    def enter_setup_screen(self):
+        self.setup_screen_active = True
+        self.sidebar.set_sensitive(False)
+        self.stack.set_visible_child_name("setup")
+        self.setup_spinner.start()
+
+    def exit_setup_screen(self):
+        if not self.setup_screen_active:
+            return
+        self.setup_screen_active = False
+        self.setup_spinner.stop()
+        self.sidebar.set_sensitive(True)
 
     def apply_theme(self, theme):
         self.theme_provider.load_from_data(THEMES[theme] + CSS)
@@ -3213,19 +3252,14 @@ class RobloxLauncher(Gtk.Application):
         self.refresh_state()
         if startup:
             self.loading_spinner.start()
-        if installation_complete():
-            self.status_title.set_text("Checking for updates")
-            self.status_copy.set_text(
-                "Refreshing the AppImage and the Roblox client. This can take a "
-                "moment if a new release is available."
-            )
-        else:
-            self.status_title.set_text("Setting up Roblox")
-            self.status_copy.set_text(
-                "First-time setup downloads the Roblox client and prepares "
-                "shaders, which can take several minutes. Press Play once and "
-                "Roblox will start when it finishes."
-            )
+        self.status_title.set_text("Checking for updates")
+        self.status_copy.set_text(
+            "Refreshing the AppImage and the Roblox client. This can take a "
+            "moment if a new release is available."
+        )
+        if not installation_complete():
+            self.fresh_install_launch = True
+            self.enter_setup_screen()
         self.status_icon.set_from_icon_name("content-loading-symbolic")
         self.spinner.start()
 
@@ -3290,6 +3324,7 @@ class RobloxLauncher(Gtk.Application):
         self.spinner.stop()
         if startup:
             self.loading_spinner.stop()
+        self.exit_setup_screen()
         self.refresh_state()
         if succeeded and (not launch_after_update or installation_complete()):
             self.status_title.set_text("Ready to play")
@@ -3493,6 +3528,13 @@ class RobloxLauncher(Gtk.Application):
             self.status_copy.set_text(
                 "Launch progress is shown in the Roblox launch window."
             )
+            if self.fresh_install_launch:
+                self.fresh_install_launch = False
+                self.status_copy.set_text(
+                    "Launch progress is shown in the Roblox launch window. "
+                    "The first launch after installing may not work: if Roblox "
+                    "doesn't open, click Terminate Roblox, then press Play again."
+                )
             return True
         except (OSError, ValueError, RuntimeError) as error:
             if display_scale is not None and not display_scale_monitor_started:
