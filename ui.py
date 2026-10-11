@@ -3530,7 +3530,8 @@ class RobloxLauncher(Gtk.Application):
             secondary_text=(
                 "The first time you open Roblox it may glitch out. If that "
                 "happens, go back to this app, click Terminate Roblox, then "
-                "start Roblox again."
+                "start Roblox again. Sometimes you may have to terminate and "
+                "reopen Roblox two or three times before it works."
             ),
         )
 
