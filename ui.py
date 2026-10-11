@@ -61,7 +61,18 @@ TEXTURE_FLAGS = {
 DESKTOP_FILE_NAME = "roblox-linux-release.desktop"
 DESKTOP_SHORTCUT_MARKER = "X-RobloxLinuxRelease=true"
 APP_NAME = "Mactolinux"
-__version__ = "0.69"
+DEFAULT_VERSION = "0.69patch1"
+
+
+def _release_version():
+    try:
+        tag = APPIMAGE_RELEASE_FILE.read_text(encoding="utf-8").strip()
+    except OSError:
+        tag = ""
+    return tag.lstrip("vV") or DEFAULT_VERSION
+
+
+__version__ = _release_version()
 ROBLOX_DISPLAY_SCALES = (1.0, 1.5, 1.75, 2.0)
 ROBLOX_SESSION_SCHEMA = (
     Secret.Schema.new(
