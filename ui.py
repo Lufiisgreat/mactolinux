@@ -48,6 +48,11 @@ LAUNCHER_VERSION_FILE = DATA / "launcher-version"
 LATEST_COMMIT_URL = (
     "https://api.github.com/repos/Lufiisgreat/mactolinux/commits/main"
 )
+LATEST_RELEASE_URL = (
+    "https://api.github.com/repos/Lufiisgreat/mactolinux/releases/latest"
+)
+RELEASE_ASSET_NAME = "RobloxLinux.AppImage"
+APPIMAGE_RELEASE_FILE = DATA / "appimage-release"
 FFLAGS_FILE = HERE / "FFlags.json"
 TEXTURE_FLAGS = {
     "DFFlagTextureQualityOverrideEnabled",
@@ -56,7 +61,7 @@ TEXTURE_FLAGS = {
 DESKTOP_FILE_NAME = "roblox-linux-release.desktop"
 DESKTOP_SHORTCUT_MARKER = "X-RobloxLinuxRelease=true"
 APP_NAME = "Mactolinux"
-__version__ = "0.66patch2"
+__version__ = "0.67patch1"
 ROBLOX_DISPLAY_SCALES = (1.0, 1.5, 1.75, 2.0)
 ROBLOX_SESSION_SCHEMA = (
     Secret.Schema.new(
@@ -457,6 +462,22 @@ def run_logged(args, log_path):
             check=False,
         )
     return result.returncode
+
+
+def appimage_looks_valid(path):
+    """Apply the same acceptance test install.sh uses for a dropped AppImage.
+
+    Only a 64-bit x86-64 ELF is accepted, so a GitHub error page or an HTML
+    redirect body can never replace a working AppImage.
+    """
+    try:
+        with path.open("rb") as handle:
+            header = handle.read(20)
+    except OSError:
+        return False
+    if header[:4] != b"\x7fELF" or header[4] != 2 or header[5] != 1:
+        return False
+    return int.from_bytes(header[18:20], "little") == 0x3E
 
 
 def _desktop_tokens():
@@ -3055,6 +3076,114 @@ class RobloxLauncher(Gtk.Application):
         self.quit()
         return GLib.SOURCE_REMOVE
 
+    def refresh_appimage_from_release(self, log_path):
+        """Swap in the newest released AppImage when GitHub publishes one.
+
+        Returns a short note describing what happened, for the status card.
+        Never raises: a problem here must not stop the Roblox client update
+        that runs after it, and the installed AppImage is only replaced once
+        the download has been validated.
+        """
+        request = urllib.request.Request(
+            LATEST_RELEASE_URL,
+            headers={
+                "Accept": "application/vnd.github+json",
+                "User-Agent": "Mactolinux",
+                "X-GitHub-Api-Version": "2022-11-28",
+            },
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=20) as response:
+                payload = json.load(response)
+        except (
+            OSError,
+            urllib.error.URLError,
+            json.JSONDecodeError,
+            ValueError,
+        ) as error:
+            return f"Could not check Mactolinux releases: {error}"
+        if not isinstance(payload, dict):
+            return "GitHub returned an invalid release response."
+        tag = payload.get("tag_name")
+        assets = payload.get("assets")
+        if not isinstance(tag, str) or not tag or not isinstance(assets, list):
+            return "GitHub returned an invalid release response."
+        asset = next(
+            (
+                entry
+                for entry in assets
+                if isinstance(entry, dict)
+                and entry.get("name") == RELEASE_ASSET_NAME
+            ),
+            None,
+        )
+        if asset is None:
+            return f"Release {tag} has no {RELEASE_ASSET_NAME}."
+        url = asset.get("browser_download_url")
+        announced_size = asset.get("size")
+        if not isinstance(url, str) or not url.startswith("https://"):
+            return f"Release {tag} had an unusable asset URL."
+        try:
+            installed_tag = APPIMAGE_RELEASE_FILE.read_text(
+                encoding="utf-8"
+            ).strip()
+        except OSError:
+            installed_tag = ""
+        # Compare release tags rather than file sizes: two builds can differ in
+        # content and still compress to exactly the same byte count.
+        if installed_tag == tag and APPIMAGE.is_file():
+            return f"The AppImage is already release {tag}."
+
+        DATA.mkdir(mode=0o700, parents=True, exist_ok=True)
+        os.chmod(DATA, 0o700)
+        staged = APPIMAGE.with_name(f".{APPIMAGE.name}.new")
+        try:
+            with log_path.open("w", encoding="utf-8") as log:
+                log.write(
+                    f"Downloading {RELEASE_ASSET_NAME} from release {tag}\n"
+                )
+                log.write(f"Source: {url}\n")
+                download = urllib.request.Request(
+                    url, headers={"User-Agent": "Mactolinux"}
+                )
+                with urllib.request.urlopen(download, timeout=120) as response:
+                    if not response.geturl().startswith("https://"):
+                        raise ValueError(
+                            "the asset URL was redirected insecurely"
+                        )
+                    with staged.open("wb") as handle:
+                        shutil.copyfileobj(
+                            response, handle, length=1024 * 1024
+                        )
+        except (OSError, urllib.error.URLError, ValueError) as error:
+            staged.unlink(missing_ok=True)
+            return f"Could not download release {tag}: {error}"
+
+        if not appimage_looks_valid(staged):
+            staged.unlink(missing_ok=True)
+            return f"Release {tag} did not contain a valid AppImage."
+        if (
+            isinstance(announced_size, int)
+            and staged.stat().st_size != announced_size
+        ):
+            staged.unlink(missing_ok=True)
+            return (
+                f"Release {tag} downloaded incompletely; kept the current one."
+            )
+
+        try:
+            os.chmod(staged, 0o755)
+            os.replace(staged, APPIMAGE)
+        except OSError as error:
+            staged.unlink(missing_ok=True)
+            return f"Could not install release {tag}: {error}"
+        try:
+            APPIMAGE_RELEASE_FILE.write_text(f"{tag}\n", encoding="utf-8")
+            os.chmod(APPIMAGE_RELEASE_FILE, 0o600)
+        except OSError:
+            pass
+        return f"The AppImage was updated to release {tag}."
+
     def start_update(
         self,
         _button=None,
@@ -3070,13 +3199,29 @@ class RobloxLauncher(Gtk.Application):
             self.loading_spinner.start()
         self.status_title.set_text("Checking for updates")
         self.status_copy.set_text(
-            "This can take a moment if a new client is available."
+            "Refreshing the AppImage and the Roblox client. This can take a "
+            "moment if a new release is available."
         )
         self.status_icon.set_from_icon_name("content-loading-symbolic")
         self.spinner.start()
 
+        # Read this on the UI thread: the worker must not touch GTK, and a
+        # running client must never have its AppImage swapped underneath it.
+        game_running = bool(self.running_roblox_processes())
+
         def worker():
             log_path = DATA / "ui-update.log"
+            if game_running:
+                appimage_note = (
+                    "The AppImage was not refreshed while Roblox is running."
+                )
+            else:
+                try:
+                    appimage_note = self.refresh_appimage_from_release(
+                        DATA / "ui-appimage.log"
+                    )
+                except OSError as error:
+                    appimage_note = f"Could not refresh the AppImage: {error}"
             try:
                 result = run_logged(
                     ["sh", str(HERE / "update-roblox.sh")], log_path
@@ -3090,6 +3235,7 @@ class RobloxLauncher(Gtk.Application):
                     launch_after_update,
                     startup,
                     launch_uri,
+                    appimage_note,
                 )
                 return
             GLib.idle_add(
@@ -3100,6 +3246,7 @@ class RobloxLauncher(Gtk.Application):
                 launch_after_update,
                 startup,
                 launch_uri,
+                appimage_note,
             )
 
         threading.Thread(target=worker, daemon=True).start()
@@ -3113,6 +3260,7 @@ class RobloxLauncher(Gtk.Application):
         launch_after_update,
         startup,
         launch_uri,
+        appimage_note="",
     ):
         self.job_running = False
         self.spinner.stop()
@@ -3121,7 +3269,10 @@ class RobloxLauncher(Gtk.Application):
         self.refresh_state()
         if succeeded and (not launch_after_update or installation_complete()):
             self.status_title.set_text("Ready to play")
-            self.status_copy.set_text("Roblox is installed and up to date.")
+            summary = "Roblox is installed and up to date."
+            if appimage_note:
+                summary = f"{summary} {appimage_note}"
+            self.status_copy.set_text(summary)
             self.status_icon.set_from_icon_name("emblem-ok-symbolic")
             if launch_after_update:
                 self.launch_client(launch_uri)
@@ -3131,6 +3282,8 @@ class RobloxLauncher(Gtk.Application):
                 "The installation is still incomplete. "
                 "Review the updater log for details."
             )
+            if appimage_note:
+                failure = f"{failure} {appimage_note}"
             self.status_copy.set_text(
                 f"{failure} Log: {log_path.relative_to(HERE)}"
             )
