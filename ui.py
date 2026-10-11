@@ -3349,6 +3349,12 @@ class RobloxLauncher(Gtk.Application):
                 f"{failure} Log: {log_path.relative_to(HERE)}"
             )
             self.status_icon.set_from_icon_name("dialog-error-symbolic")
+        self.show_page(None, "launcher")
+        if succeeded:
+            self.run_queued_launch()
+        else:
+            self.queued_launch = False
+            self.queued_launch_uri = None
         return GLib.SOURCE_REMOVE
 
     def confirm_uninstall(self, _button):
@@ -3454,11 +3460,6 @@ class RobloxLauncher(Gtk.Application):
             self.status_copy.set_text(details)
             self.status_icon.set_from_icon_name("dialog-error-symbolic")
         self.stack.set_visible_child_name("launcher")
-        if succeeded:
-            self.run_queued_launch()
-        else:
-            self.queued_launch = False
-            self.queued_launch_uri = None
         return GLib.SOURCE_REMOVE
 
     def run_queued_launch(self):
