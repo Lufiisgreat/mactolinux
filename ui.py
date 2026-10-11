@@ -3280,6 +3280,19 @@ class RobloxLauncher(Gtk.Application):
                     )
                 except OSError as error:
                     appimage_note = f"Could not refresh the AppImage: {error}"
+            if game_running and installation_complete():
+                GLib.idle_add(
+                    self.finish_update,
+                    True,
+                    log_path,
+                    "",
+                    launch_after_update,
+                    startup,
+                    launch_uri,
+                    "Roblox is running, so the client update was skipped. "
+                    "Close Roblox and check again to update.",
+                )
+                return
             try:
                 result = run_logged(
                     ["sh", str(HERE / "update-roblox.sh")], log_path
@@ -3339,10 +3352,18 @@ class RobloxLauncher(Gtk.Application):
                 self.launch_client(launch_uri)
         else:
             self.status_title.set_text("Could not check or update Roblox")
-            failure = error or (
-                "The installation is still incomplete. "
-                "Review the updater log for details."
-            )
+            failure = error
+            if not failure:
+                try:
+                    lines = log_path.read_text(
+                        encoding="utf-8", errors="replace"
+                    ).strip().splitlines()
+                except OSError:
+                    lines = []
+                failure = lines[-1] if lines else (
+                    "The installation is still incomplete. "
+                    "Review the updater log for details."
+                )
             if appimage_note:
                 failure = f"{failure} {appimage_note}"
             self.status_copy.set_text(
