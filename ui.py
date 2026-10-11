@@ -1304,8 +1304,12 @@ class RobloxLauncher(Gtk.Application):
         welcome_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=14)
         welcome_row.add_css_class("welcome-row")
         intro.append(welcome_row)
-        welcome_icon = Gtk.Image.new_from_icon_name("applications-games-symbolic")
-        welcome_icon.set_pixel_size(36)
+        logo_path = HERE / "roblox-logo-white.png"
+        if logo_path.exists():
+            welcome_icon = Gtk.Image.new_from_file(str(logo_path))
+        else:
+            welcome_icon = Gtk.Image.new_from_icon_name("applications-games-symbolic")
+        welcome_icon.set_pixel_size(44)
         welcome_icon.add_css_class("welcome-icon")
         welcome_row.append(welcome_icon)
         welcome_text = Gtk.Box(

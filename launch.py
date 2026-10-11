@@ -164,6 +164,13 @@ class RobloxLaunchWindow(Gtk.Application):
         hero.add_css_class("launch-card")
         content.append(hero)
 
+        logo_path = HERE / "roblox-logo-white.png"
+        if logo_path.exists():
+            logo = Gtk.Image.new_from_file(str(logo_path))
+            logo.set_pixel_size(64)
+            logo.set_halign(Gtk.Align.CENTER)
+            hero.append(logo)
+
         heading = Gtk.Label(
             label="Joining Roblox game"
             if self.launch_uri
