@@ -58,6 +58,7 @@ TEXTURE_FLAGS = {
     "DFFlagTextureQualityOverrideEnabled",
     "DFIntTextureQualityOverride",
 }
+FIRST_LAUNCH_NOTICE_FILE = DATA / "first-launch-notice-shown"
 DESKTOP_FILE_NAME = "roblox-linux-release.desktop"
 DESKTOP_SHORTCUT_MARKER = "X-RobloxLinuxRelease=true"
 APP_NAME = "Mactolinux"
@@ -1010,7 +1011,6 @@ class RobloxLauncher(Gtk.Application):
         self.restart_after_launcher_update = False
         self.queued_launch = False
         self.queued_launch_uri = None
-        self.fresh_install_launch = False
         self.setup_screen_active = False
         self.running_monitor_started = False
         self.fullscreen_window_ids = {}
@@ -3258,7 +3258,6 @@ class RobloxLauncher(Gtk.Application):
             "moment if a new release is available."
         )
         if not installation_complete():
-            self.fresh_install_launch = True
             self.enter_setup_screen()
         self.status_icon.set_from_icon_name("content-loading-symbolic")
         self.spinner.start()
@@ -3349,7 +3348,7 @@ class RobloxLauncher(Gtk.Application):
             if launch_after_update:
                 self.queued_launch = False
                 self.queued_launch_uri = None
-                self.launch_client(launch_uri)
+                self.launch_with_first_notice(launch_uri)
         else:
             self.status_title.set_text("Could not check or update Roblox")
             failure = error
@@ -3460,6 +3459,8 @@ class RobloxLauncher(Gtk.Application):
 
     def finish_uninstall(self, succeeded, output, uninstall_mode):
         self.job_running = False
+        if succeeded:
+            FIRST_LAUNCH_NOTICE_FILE.unlink(missing_ok=True)
         self.refresh_state()
         if succeeded:
             if uninstall_mode == "everything":
@@ -3515,7 +3516,40 @@ class RobloxLauncher(Gtk.Application):
                 launch_uri=launch_uri,
             )
             return True
-        return self.launch_client(launch_uri)
+        return self.launch_with_first_notice(launch_uri)
+
+    def launch_with_first_notice(self, launch_uri=None):
+        if FIRST_LAUNCH_NOTICE_FILE.exists():
+            return self.launch_client(launch_uri)
+        dialog = Gtk.MessageDialog(
+            transient_for=self.window,
+            modal=True,
+            message_type=Gtk.MessageType.INFO,
+            buttons=Gtk.ButtonsType.OK_CANCEL,
+            text="First launch notice",
+            secondary_text=(
+                "The first time you open Roblox it may glitch out. If that "
+                "happens, go back to this app, click Terminate Roblox, then "
+                "start Roblox again."
+            ),
+        )
+
+        def on_response(dialog, response):
+            dialog.destroy()
+            if response != Gtk.ResponseType.OK:
+                self.status_title.set_text("Launch cancelled")
+                self.status_copy.set_text("Press Play Roblox when you're ready.")
+                return
+            try:
+                DATA.mkdir(mode=0o700, parents=True, exist_ok=True)
+                FIRST_LAUNCH_NOTICE_FILE.write_text("1\n", encoding="utf-8")
+            except OSError:
+                pass
+            self.launch_client(launch_uri)
+
+        dialog.connect("response", on_response)
+        dialog.present()
+        return True
 
     def launch_client(self, launch_uri=None):
         display_scale = None
@@ -3550,13 +3584,6 @@ class RobloxLauncher(Gtk.Application):
             self.status_copy.set_text(
                 "Launch progress is shown in the Roblox launch window."
             )
-            if self.fresh_install_launch:
-                self.fresh_install_launch = False
-                self.status_copy.set_text(
-                    "Launch progress is shown in the Roblox launch window. "
-                    "The first launch after installing may not work: if Roblox "
-                    "doesn't open, click Terminate Roblox, then press Play again."
-                )
             return True
         except (OSError, ValueError, RuntimeError) as error:
             if display_scale is not None and not display_scale_monitor_started:
