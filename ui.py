@@ -58,8 +58,81 @@ TEXTURE_FLAGS = {
     "DFFlagTextureQualityOverrideEnabled",
     "DFIntTextureQualityOverride",
 }
-FPS_FLAG = "DFIntTaskSchedulerTargetFps"
 FPS_CAPS = ("60", "120", "144", "165", "240", "360", "480", "720", "1000", "9999")
+
+
+def _global_basic_settings_paths():
+    paths = []
+    candidates = [
+        DATA / "prefix/var/root/Library/Roblox/GlobalBasicSettings_13.xml",
+        Path.home() / ".local/share/mactolinux/DO_NOT_SHARE/prefix/var/root/Library/Roblox/GlobalBasicSettings_13.xml",
+    ]
+    darling_base = Path.home() / ".darling/Users"
+    if darling_base.is_dir():
+        try:
+            for user_dir in darling_base.iterdir():
+                candidates.append(user_dir / "Library/Roblox/GlobalBasicSettings_13.xml")
+        except OSError:
+            pass
+    for p in candidates:
+        if p not in paths:
+            paths.append(p)
+    return paths
+
+
+def read_framerate_cap():
+    for path in _global_basic_settings_paths():
+        if path.exists():
+            try:
+                content = path.read_text(encoding="utf-8")
+                match = re.search(r'<int name="FramerateCap">(\d+)</int>', content)
+                if match:
+                    return match.group(1)
+            except OSError:
+                pass
+    return None
+
+
+def write_framerate_cap(cap_value):
+    success = False
+    for path in _global_basic_settings_paths():
+        if not path.exists():
+            continue
+        temporary_path = None
+        try:
+            content = path.read_text(encoding="utf-8")
+            new_content, count = re.subn(
+                r'(<int name="FramerateCap">)\d+(</int>)',
+                rf'\g<1>{cap_value}\2',
+                content,
+            )
+            if count == 0:
+                new_content, count = re.subn(
+                    r'(<Item class="UserGameSettings"[^>]*>\s*<Properties>)',
+                    rf'\1\n\t\t\t<int name="FramerateCap">{cap_value}</int>',
+                    content,
+                )
+            if count > 0:
+                with tempfile.NamedTemporaryFile(
+                    mode="w",
+                    encoding="utf-8",
+                    dir=path.parent,
+                    prefix=".GlobalBasicSettings-",
+                    delete=False,
+                ) as temporary_file:
+                    temporary_path = Path(temporary_file.name)
+                    temporary_file.write(new_content)
+                os.replace(temporary_path, path)
+                success = True
+        except OSError:
+            pass
+        finally:
+            if temporary_path and temporary_path.exists():
+                try:
+                    temporary_path.unlink()
+                except OSError:
+                    pass
+    return success
 FIRST_LAUNCH_NOTICE_FILE = DATA / "first-launch-notice-shown"
 DESKTOP_FILE_NAME = "roblox-linux-release.desktop"
 DESKTOP_SHORTCUT_MARKER = "X-RobloxLinuxRelease=true"
@@ -1802,9 +1875,8 @@ class RobloxLauncher(Gtk.Application):
         title.add_css_class("page-title")
         page.append(title)
         description = self.secondary_label(
-            "Manage the recommended texture-quality override. These are the only "
-            "flags exposed here, plus the FPS cap; Roblox may ignore "
-            "unsupported flags.",
+            "Manage the recommended texture-quality override and FPS cap; "
+            "Roblox may ignore unsupported settings.",
             "page-copy",
         )
         description.set_wrap(True)
@@ -1816,6 +1888,7 @@ class RobloxLauncher(Gtk.Application):
                 raise ValueError("FFlags.json must contain a JSON object.")
             if any(not isinstance(value, str) for value in self.fflag_values.values()):
                 raise ValueError("FFlags.json values must be strings.")
+            self.fflag_values.pop("DFIntTaskSchedulerTargetFps", None)
         except (OSError, json.JSONDecodeError, ValueError) as error:
             self.fflag_error = f"Could not load FFlags.json: {error}"
             self.fflag_values = {}
@@ -1869,8 +1942,8 @@ class RobloxLauncher(Gtk.Application):
         self.fflag_quality_dropdown.connect("notify::selected", self.on_fflag_changed)
         quality_row.append(self.fflag_quality_dropdown)
 
-        fps_value = self.fflag_values.get(FPS_FLAG)
-        self.fps_choices = [None, *FPS_CAPS]
+        fps_value = read_framerate_cap()
+        self.fps_choices = list(FPS_CAPS)
         if fps_value is not None and fps_value not in FPS_CAPS:
             self.fps_choices.append(fps_value)
         fps_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
@@ -1881,22 +1954,26 @@ class RobloxLauncher(Gtk.Application):
         fps_text.append(self.label("FPS cap"))
         fps_text.append(
             self.secondary_label(
-                "Set the target FPS in FFlags.json. Note: Modern Roblox "
-                "internally hard-caps physics and frame rates at 240 FPS, so "
-                "values above 240 or 'Unlimited' will still be clamped to 240 by the Roblox engine.",
+                "Sets FramerateCap in GlobalBasicSettings_13.xml directly.",
                 "page-copy",
             )
         )
         self.fps_dropdown = Gtk.DropDown.new_from_strings(
             [
-                "Default" if choice is None
-                else "Unlimited (9999)" if choice == "9999"
+                "Unlimited (9999)" if choice == "9999"
                 else choice
                 for choice in self.fps_choices
             ]
         )
         self.fps_dropdown.set_valign(Gtk.Align.CENTER)
-        self.fps_dropdown.set_selected(self.fps_choices.index(fps_value))
+        selected_target = (
+            fps_value
+            if fps_value in self.fps_choices
+            else "240"
+            if "240" in self.fps_choices
+            else self.fps_choices[0]
+        )
+        self.fps_dropdown.set_selected(self.fps_choices.index(selected_target))
         self.fps_dropdown.connect("notify::selected", self.on_fflag_changed)
         fps_row.append(self.fps_dropdown)
 
@@ -1906,7 +1983,6 @@ class RobloxLauncher(Gtk.Application):
         if self.fflag_error:
             self.fflag_status.set_text(self.fflag_error)
             self.fflag_enabled_switch.set_sensitive(False)
-            self.fps_dropdown.set_sensitive(False)
             self.fflag_quality_dropdown.set_sensitive(False)
 
         modifications_heading = self.label("User modifications")
@@ -1977,6 +2053,9 @@ class RobloxLauncher(Gtk.Application):
         self.fflag_quality_dropdown.set_sensitive(
             self.fflag_enabled_switch.get_active() and not self.fflag_error
         )
+        fps_choice = self.fps_choices[self.fps_dropdown.get_selected()]
+        write_framerate_cap(fps_choice)
+
         if self.fflag_error:
             return
         if self.fflag_enabled_switch.get_active():
@@ -1987,11 +2066,7 @@ class RobloxLauncher(Gtk.Application):
         else:
             self.fflag_values.pop("DFFlagTextureQualityOverrideEnabled", None)
             self.fflag_values.pop("DFIntTextureQualityOverride", None)
-        fps_choice = self.fps_choices[self.fps_dropdown.get_selected()]
-        if fps_choice is None:
-            self.fflag_values.pop(FPS_FLAG, None)
-        else:
-            self.fflag_values[FPS_FLAG] = fps_choice
+        self.fflag_values.pop("DFIntTaskSchedulerTargetFps", None)
 
         temporary_path = None
         try:
@@ -2006,7 +2081,7 @@ class RobloxLauncher(Gtk.Application):
                 json.dump(self.fflag_values, temporary_file, indent=2)
                 temporary_file.write("\n")
             os.replace(temporary_path, FFLAGS_FILE)
-            self.fflag_status.set_text("FFlags.json saved.")
+            self.fflag_status.set_text("Settings saved.")
         except OSError as error:
             self.fflag_status.set_text(f"Could not save FFlags.json: {error}")
         finally:
