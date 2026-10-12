@@ -58,6 +58,8 @@ TEXTURE_FLAGS = {
     "DFFlagTextureQualityOverrideEnabled",
     "DFIntTextureQualityOverride",
 }
+FPS_FLAG = "DFIntTaskSchedulerTargetFps"
+FPS_CAPS = ("60", "120", "144", "165", "240", "360", "480", "720", "1000", "9999")
 FIRST_LAUNCH_NOTICE_FILE = DATA / "first-launch-notice-shown"
 DESKTOP_FILE_NAME = "roblox-linux-release.desktop"
 DESKTOP_SHORTCUT_MARKER = "X-RobloxLinuxRelease=true"
@@ -1047,6 +1049,8 @@ class RobloxLauncher(Gtk.Application):
         self.fflag_enabled_switch = None
         self.fflag_quality_dropdown = None
         self.fflag_status = None
+        self.fps_dropdown = None
+        self.fps_choices = []
         self.fflag_values = {}
         self.fflag_error = ""
         self.modifications_switch = None
@@ -1799,7 +1803,8 @@ class RobloxLauncher(Gtk.Application):
         page.append(title)
         description = self.secondary_label(
             "Manage the recommended texture-quality override. These are the only "
-            "flags exposed here; Roblox may ignore unsupported flags.",
+            "flags exposed here, plus the FPS cap; Roblox may ignore "
+            "unsupported flags.",
             "page-copy",
         )
         description.set_wrap(True)
@@ -1864,12 +1869,43 @@ class RobloxLauncher(Gtk.Application):
         self.fflag_quality_dropdown.connect("notify::selected", self.on_fflag_changed)
         quality_row.append(self.fflag_quality_dropdown)
 
+        fps_value = self.fflag_values.get(FPS_FLAG)
+        self.fps_choices = [None, *FPS_CAPS]
+        if fps_value is not None and fps_value not in FPS_CAPS:
+            self.fps_choices.append(fps_value)
+        fps_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
+        page.append(fps_row)
+        fps_text = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=3)
+        fps_text.set_hexpand(True)
+        fps_row.append(fps_text)
+        fps_text.append(self.label("FPS cap"))
+        fps_text.append(
+            self.secondary_label(
+                "Raise the frame-rate limit above Roblox's default. 9999 "
+                "effectively removes the cap.",
+                "page-copy",
+            )
+        )
+        self.fps_dropdown = Gtk.DropDown.new_from_strings(
+            [
+                "Default" if choice is None
+                else "Unlimited (9999)" if choice == "9999"
+                else choice
+                for choice in self.fps_choices
+            ]
+        )
+        self.fps_dropdown.set_valign(Gtk.Align.CENTER)
+        self.fps_dropdown.set_selected(self.fps_choices.index(fps_value))
+        self.fps_dropdown.connect("notify::selected", self.on_fflag_changed)
+        fps_row.append(self.fps_dropdown)
+
         self.fflag_status = self.secondary_label("", "page-copy")
         self.fflag_status.set_wrap(True)
         page.append(self.fflag_status)
         if self.fflag_error:
             self.fflag_status.set_text(self.fflag_error)
             self.fflag_enabled_switch.set_sensitive(False)
+            self.fps_dropdown.set_sensitive(False)
             self.fflag_quality_dropdown.set_sensitive(False)
 
         modifications_heading = self.label("User modifications")
@@ -1950,6 +1986,11 @@ class RobloxLauncher(Gtk.Application):
         else:
             self.fflag_values.pop("DFFlagTextureQualityOverrideEnabled", None)
             self.fflag_values.pop("DFIntTextureQualityOverride", None)
+        fps_choice = self.fps_choices[self.fps_dropdown.get_selected()]
+        if fps_choice is None:
+            self.fflag_values.pop(FPS_FLAG, None)
+        else:
+            self.fflag_values[FPS_FLAG] = fps_choice
 
         temporary_path = None
         try:
