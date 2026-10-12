@@ -1035,7 +1035,7 @@ class RobloxLauncher(Gtk.Application):
         self.settings = {
             "theme": "light",
             "check_updates_on_startup": True,
-            "roblox_display_scale": 1.0,
+            "roblox_display_scale": 1.5,
             "modifications_enabled": False,
             "prefetch_discover": False,
         }
@@ -1063,7 +1063,7 @@ class RobloxLauncher(Gtk.Application):
                     raise ValueError("Settings must be a JSON object.")
                 theme = saved_settings.get("theme", "light")
                 check_updates = saved_settings.get("check_updates_on_startup", True)
-                display_scale = saved_settings.get("roblox_display_scale", 1.0)
+                display_scale = saved_settings.get("roblox_display_scale", 1.5)
                 modifications_enabled = saved_settings.get(
                     "modifications_enabled", False
                 )
@@ -1075,9 +1075,9 @@ class RobloxLauncher(Gtk.Application):
                     or not isinstance(display_scale, (int, float))
                     or display_scale not in ROBLOX_DISPLAY_SCALES
                 ):
-                    display_scale = 1.0
+                    display_scale = 1.5
                     self.settings_error = (
-                        "The saved Roblox display scale was invalid; using 100%."
+                        "The saved Roblox display scale was invalid; using 150%."
                     )
                 if theme not in THEMES:
                     raise ValueError("The saved theme must be 'light' or 'dark'.")
@@ -3602,5 +3602,4 @@ class RobloxLauncher(Gtk.Application):
 if __name__ == "__main__":
     app = RobloxLauncher()
     raise SystemExit(app.run(None))
-
 
