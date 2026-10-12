@@ -1881,8 +1881,9 @@ class RobloxLauncher(Gtk.Application):
         fps_text.append(self.label("FPS cap"))
         fps_text.append(
             self.secondary_label(
-                "Raise the frame-rate limit above Roblox's default. 9999 "
-                "effectively removes the cap.",
+                "Set the target FPS in FFlags.json. Note: Modern Roblox "
+                "internally hard-caps physics and frame rates at 240 FPS, so "
+                "values above 240 or 'Unlimited' will still be clamped to 240 by the Roblox engine.",
                 "page-copy",
             )
         )
