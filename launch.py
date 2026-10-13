@@ -21,26 +21,42 @@ SETTINGS_FILE = DATA / "settings.json"
 
 THEMES = {
     "dark": b"""
-@define-color app_bg #191a1b;
-@define-color app_fg #f7f7f8;
-@define-color header_top #191a1b;
-@define-color border #343638;
-@define-color status_bg #222426;
-@define-color log_bg #1c1d1f;
-@define-color secondary_fg #b0b4b8;
-@define-color footer_fg #858a8e;
+@define-color app_bg #151618;
+@define-color app_fg #f0f0f2;
+@define-color header_top alpha(#1a1b1e, 0.78);
+@define-color border #2a2c30;
+@define-color border_hover #3e4148;
+@define-color glass_border alpha(#ffffff, 0.08);
+@define-color glass_border_hover alpha(#ffffff, 0.16);
+@define-color glass_panel_bg alpha(#1e2025, 0.62);
+@define-color glass_button_bg alpha(#26282d, 0.6);
+@define-color glass_button_hover alpha(#30333a, 0.82);
+@define-color status_bg #1e2022;
+@define-color log_bg alpha(#121316, 0.72);
+@define-color secondary_fg #9fa4aa;
+@define-color footer_fg #636870;
 @define-color accent #c0b9d8;
+@define-color shadow_xs alpha(#000000, 0.18);
+@define-color glass_shadow alpha(#000000, 0.18);
 """,
     "light": b"""
-@define-color app_bg #ffffff;
+@define-color app_bg #f6f7fb;
 @define-color app_fg #191b1f;
-@define-color header_top #ffffff;
-@define-color border #e1e3e6;
-@define-color status_bg #f5f6f7;
-@define-color log_bg #fafafa;
-@define-color secondary_fg #60656b;
-@define-color footer_fg #777d83;
-@define-color accent #c0b9d8;
+@define-color header_top alpha(#ffffff, 0.75);
+@define-color border #e1e3e8;
+@define-color border_hover #c8cbd2;
+@define-color glass_border alpha(#191b1f, 0.08);
+@define-color glass_border_hover alpha(#191b1f, 0.16);
+@define-color glass_panel_bg alpha(#ffffff, 0.68);
+@define-color glass_button_bg alpha(#ffffff, 0.65);
+@define-color glass_button_hover alpha(#ffffff, 0.95);
+@define-color status_bg #f8f8f9;
+@define-color log_bg alpha(#ffffff, 0.75);
+@define-color secondary_fg #5a5f66;
+@define-color footer_fg #878d94;
+@define-color accent #7b6fa0;
+@define-color shadow_xs alpha(#000000, 0.05);
+@define-color glass_shadow alpha(#191b1f, 0.04);
 """,
 }
 
@@ -50,57 +66,71 @@ window {
   color: @app_fg;
 }
 button {
-  transition: 160ms ease-out;
+  background: @glass_button_bg;
+  color: @app_fg;
+  border: 1px solid @glass_border;
+  border-radius: 7px;
+  font-weight: 500;
+  transition: all 140ms cubic-bezier(0.2, 0, 0, 1);
 }
 button:hover {
-  transition: 160ms ease-out;
+  background: @glass_button_hover;
+  border-color: @glass_border_hover;
+}
+button:active {
+  background: @button_selected;
 }
 headerbar {
   background: @header_top;
-  border-bottom: 1px solid @border;
+  border-bottom: 1px solid @glass_border;
   box-shadow: none;
+  min-height: 46px;
+  padding: 0 8px;
 }
 .launch-content {
-  padding: 22px 26px 20px;
+  padding: 28px 32px 24px;
 }
 .launch-card {
   background: transparent;
   border: none;
   border-radius: 0;
-  padding: 10px 4px;
+  padding: 12px 4px;
 }
 .launch-title {
   font-size: 20px;
-  font-weight: 700;
+  font-weight: 800;
+  letter-spacing: -0.3px;
 }
 .launch-copy {
   color: @secondary_fg;
   font-size: 13px;
+  margin-top: 3px;
 }
 .launch-spinner {
   color: @accent;
 }
 .log-panel {
-  background: @status_bg;
-  border: 1px solid @border;
-  border-radius: 5px;
+  background: @glass_panel_bg;
+  border: 1px solid @glass_border;
+  border-radius: 10px;
+  box-shadow: 0 2px 10px @glass_shadow;
 }
 .log-header {
-  padding: 9px 12px;
-  border-bottom: 1px solid @border;
+  padding: 10px 14px;
+  border-bottom: 1px solid @glass_border;
 }
 .log-title {
   color: @secondary_fg;
-  font-size: 11px;
+  font-size: 9px;
   font-weight: 700;
-  letter-spacing: 0.6px;
+  letter-spacing: 1.4px;
 }
 textview.log-view {
   background: @log_bg;
   color: @app_fg;
 }
 .log-view {
-  padding: 10px;
+  padding: 12px 14px;
   font-size: 12px;
 }
 .footer {

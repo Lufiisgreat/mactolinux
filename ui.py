@@ -278,44 +278,58 @@ window {
 }
 headerbar {
   background: @header_top;
-  border-bottom: 1px solid @border;
+  border-bottom: 1px solid @glass_border;
   box-shadow: none;
-  min-height: 44px;
-  box-shadow: none;
-  min-height: 44px;
+  min-height: 46px;
+  padding: 0 8px;
 }
 button {
-  background: @button_bg;
+  background: @glass_button_bg;
   color: @app_fg;
-  border-color: @border;
-  border-radius: 5px;
-  transition: 160ms ease-out;
+  border: 1px solid @glass_border;
+  border-radius: 7px;
+  font-weight: 500;
+  transition: all 140ms cubic-bezier(0.2, 0, 0, 1);
 }
 button:hover {
-  background: @button_hover;
+  background: @glass_button_hover;
+  border-color: @glass_border_hover;
 }
 button:active {
   background: @button_selected;
 }
 button:checked {
   background: @button_selected;
+  border-color: @glass_border_hover;
+}
+button.flat {
+  background: transparent;
+  border-color: transparent;
+  color: @secondary_fg;
+}
+button.flat:hover {
+  background: @glass_button_hover;
+  color: @app_fg;
+  border-color: transparent;
 }
 .content {
-  padding: 28px 32px;
+  padding: 28px 36px 32px;
 }
 .intro {
   background: transparent;
   border: none;
   border-radius: 0;
-  padding: 8px 0 12px;
+  padding: 4px 0 16px;
 }
 .intro-title {
-  font-size: 23px;
-  font-weight: 700;
+  font-size: 24px;
+  font-weight: 800;
+  letter-spacing: -0.5px;
 }
 .intro-copy {
   color: @secondary_fg;
-  font-size: 14px;
+  font-size: 13px;
+  margin-top: 2px;
 }
 .welcome-row {
   min-height: 52px;
@@ -325,61 +339,89 @@ button:checked {
   background: transparent;
   border-radius: 0;
   padding: 0;
+  margin-right: 4px;
 }
 .status {
-  background: @status_bg;
-  border: 1px solid @border;
+  background: @glass_status_bg;
+  border: 1px solid @glass_border;
   border-radius: 8px;
-  padding: 12px 14px;
+  padding: 13px 16px;
 }
 .action-card {
-  background: @status_bg;
-  border: 1px solid @border;
-  border-radius: 10px;
-  padding: 12px;
+  background: @glass_panel_bg;
+  border: 1px solid @glass_border;
+  border-radius: 8px;
+  padding: 16px;
 }
 .action-card .actions {
   padding: 2px 0;
 }
 .version {
-  color: @secondary_fg;
+  color: @footer_fg;
   font-size: 12px;
+  letter-spacing: 0.2px;
 }
 .actions button {
-  min-height: 40px;
-  padding: 0 16px;
+  min-height: 38px;
+  padding: 0 18px;
+  font-weight: 600;
 }
 button.suggested-action {
   background: @accent;
-  color: #2c2637;
-  border-color: @accent;
-  font-weight: 700;
-  border-radius: 5px;
-  transition: 160ms ease-out;
+  color: @accent_fg;
+  border: 1px solid alpha(#000000, 0.15);
+  font-weight: 600;
+  border-radius: 6px;
+  transition: all 120ms ease-out;
 }
 button.suggested-action:hover {
   background: @accent_hover;
-  border-color: @accent_hover;
+}
+button.suggested-action:active {
+  background: @accent;
+  opacity: 0.9;
+}
+switch {
+  border-radius: 12px;
+  outline: none;
 }
 switch:checked {
   background-color: @accent;
+}
+switch slider {
+  border-radius: 10px;
 }
 dropdown,
 entry,
 combobox button,
 togglebutton {
-  border-radius: 9px;
+  border-radius: 6px;
+  background: @glass_input_bg;
+  border: 1px solid @glass_border;
+}
+dropdown:hover,
+entry:hover,
+togglebutton:hover {
+  border-color: @glass_border_hover;
+}
+entry:focus,
+dropdown:focus {
+  border-color: @accent;
 }
 .footer {
   color: @footer_fg;
   font-size: 11px;
+  line-height: 1.4;
 }
 .page-title {
-  font-size: 23px;
-  font-weight: 700;
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: -0.3px;
 }
 .page-copy {
   color: @secondary_fg;
+  font-size: 13px;
+  line-height: 1.4;
 }
 .app-shell {
   background: @app_bg;
@@ -388,13 +430,14 @@ togglebutton {
   background: #fff;
 }
 .discover-status {
-  padding: 8px 12px;
-  background: @button_hover;
+  padding: 8px 16px;
+  background: @surface_raised;
   color: @secondary_fg;
   font-size: 12px;
+  border-bottom: 1px solid @glass_border;
 }
 .discover-fallback {
-  padding: 32px;
+  padding: 36px;
 }
 .discover-fallback-title {
   font-size: 20px;
@@ -402,105 +445,147 @@ togglebutton {
 }
 .sidebar {
   background: @sidebar_bg;
-  border-right: 1px solid @border;
-  padding: 14px 8px;
-  min-width: 180px;
+  border-right: 1px solid @glass_border;
+  padding: 10px 0 12px;
+  min-width: 192px;
 }
 .sidebar-brand {
-  padding: 4px 10px 10px;
+  padding: 10px 16px 14px;
+  border-bottom: 1px solid @glass_border;
+  margin-bottom: 6px;
 }
 .sidebar-brand-label {
-  font-size: 14px;
-  font-weight: 700;
-  letter-spacing: 1px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 3px;
+  color: @accent;
 }
 .nav {
-  padding-top: 2px;
+  padding: 2px 8px 0;
 }
 .nav button.nav-button {
-  min-height: 38px;
-  padding: 0 9px;
+  min-height: 36px;
+  padding: 0 12px;
   background: transparent;
-  border-color: transparent;
-  border-radius: 4px;
+  border: none;
+  border-radius: 6px;
   color: @secondary_fg;
   font-size: 13px;
-  transition: 160ms ease-out;
+  font-weight: 500;
+  transition: all 100ms ease-out;
 }
 .nav button.nav-button:hover {
-  background: @button_hover;
+  background: @glass_button_hover;
   color: @app_fg;
 }
 .nav button.nav-button.selected {
   background: @nav_selected;
-  color: @accent;
+  color: @app_fg;
   font-weight: 600;
 }
 .nav-section-label {
-  padding: 12px 10px 5px;
+  padding: 14px 18px 4px;
   color: @footer_fg;
   font-size: 10px;
   font-weight: 700;
+  letter-spacing: 1.4px;
 }
 .nav-button-content {
-  min-width: 150px;
+  min-width: 148px;
 }
 .nav-button-content image {
-  margin-right: 5px;
+  margin-right: 10px;
+  opacity: 0.65;
 }
 .nav-button.selected image {
   color: @accent;
+  opacity: 1;
 }
 .heading {
-  font-weight: 650;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: -0.1px;
 }
 separator {
-  background: @border;
+  background: @glass_border;
+  margin: 6px 0;
+}
+.sidebar separator {
+  margin: 6px 12px;
 }
 .danger {
   color: @secondary_fg;
 }
 .danger:hover {
-  color: @app_fg;
+  color: #ff6b6b;
+  border-color: alpha(#ff6b6b, 0.4);
 }
 """
 
 THEMES = {
     "light": b"""
-@define-color app_bg #ffffff;
+@define-color app_bg #f6f7fb;
 @define-color app_fg #191b1f;
-@define-color header_top #ffffff;
-@define-color border #e1e3e6;
-@define-color sidebar_bg #f7f7f8;
+@define-color header_top alpha(#ffffff, 0.75);
+@define-color border #e1e3e8;
+@define-color border_hover #c8cbd2;
+@define-color glass_border alpha(#191b1f, 0.08);
+@define-color glass_border_hover alpha(#191b1f, 0.16);
+@define-color sidebar_bg #f6f7fb;
+@define-color surface_raised alpha(#ffffff, 0.65);
+@define-color glass_panel_bg alpha(#ffffff, 0.68);
+@define-color glass_status_bg alpha(#191b1f, 0.03);
+@define-color glass_input_bg alpha(#ffffff, 0.6);
+@define-color glass_button_bg alpha(#ffffff, 0.65);
+@define-color glass_button_hover alpha(#ffffff, 0.95);
 @define-color button_bg #ffffff;
-@define-color button_hover #f2f3f5;
-@define-color button_selected #e9eaec;
-@define-color nav_selected alpha(#c0b9d8, 0.30);
+@define-color button_hover #f0f1f3;
+@define-color button_selected #e5e6ea;
+@define-color nav_selected alpha(#7b6fa0, 0.12);
 @define-color intro_start #ffffff;
 @define-color intro_border #e1e3e6;
-@define-color status_bg #ffffff;
-@define-color secondary_fg #60656b;
-@define-color footer_fg #777d83;
-@define-color accent #c0b9d8;
-@define-color accent_hover #afa4cb;
+@define-color status_bg #f8f8f9;
+@define-color status_tint_bg alpha(#7b6fa0, 0.04);
+@define-color accent_border alpha(#7b6fa0, 0.20);
+@define-color shadow_xs alpha(#000000, 0.05);
+@define-color glass_shadow alpha(#191b1f, 0.04);
+@define-color secondary_fg #5a5f66;
+@define-color footer_fg #878d94;
+@define-color accent #7b6fa0;
+@define-color accent_fg #ffffff;
+@define-color accent_hover #6a5e8c;
 """,
     "dark": b"""
-@define-color app_bg #191a1b;
-@define-color app_fg #f7f7f8;
-@define-color header_top #191a1b;
-@define-color border #343638;
-@define-color sidebar_bg #191a1b;
-@define-color button_bg #242526;
-@define-color button_hover #303234;
-@define-color button_selected #3b3d3f;
-@define-color nav_selected alpha(#c0b9d8, 0.18);
+@define-color app_bg #151618;
+@define-color app_fg #f0f0f2;
+@define-color header_top alpha(#1a1b1e, 0.78);
+@define-color border #2a2c30;
+@define-color border_hover #3e4148;
+@define-color glass_border alpha(#ffffff, 0.08);
+@define-color glass_border_hover alpha(#ffffff, 0.16);
+@define-color sidebar_bg #151618;
+@define-color surface_raised alpha(#202226, 0.65);
+@define-color glass_panel_bg alpha(#1e2025, 0.62);
+@define-color glass_status_bg alpha(#ffffff, 0.03);
+@define-color glass_input_bg alpha(#191a1d, 0.65);
+@define-color glass_button_bg alpha(#26282d, 0.6);
+@define-color glass_button_hover alpha(#30333a, 0.82);
+@define-color button_bg #222426;
+@define-color button_hover #2c2f32;
+@define-color button_selected #363a3e;
+@define-color nav_selected alpha(#c0b9d8, 0.12);
 @define-color intro_start #191a1b;
-@define-color intro_border #343638;
-@define-color status_bg #191a1b;
-@define-color secondary_fg #b0b4b8;
-@define-color footer_fg #858a8e;
+@define-color intro_border #2a2c2f;
+@define-color status_bg #1e2022;
+@define-color status_tint_bg alpha(#c0b9d8, 0.04);
+@define-color accent_border alpha(#c0b9d8, 0.20);
+@define-color shadow_xs alpha(#000000, 0.18);
+@define-color glass_shadow alpha(#000000, 0.18);
+@define-color secondary_fg #9fa4aa;
+@define-color footer_fg #636870;
 @define-color accent #c0b9d8;
-@define-color accent_hover #d1c9e5;
+@define-color accent_fg #1a1520;
+@define-color accent_hover #d0caeb;
 """,
 }
 
@@ -1297,15 +1382,6 @@ class RobloxLauncher(Gtk.Application):
             button.set_child(button_content)
             self.navigation_buttons[page_name] = button
             self.navigation.append(button)
-
-        self.sidebar.append(Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL))
-        self.sidebar_play_button = Gtk.Button(label="Play Roblox")
-        self.sidebar_play_button.add_css_class("suggested-action")
-        self.sidebar_play_button.connect("clicked", self.play)
-        self.sidebar_play_button.set_margin_top(4)
-        self.sidebar_play_button.set_margin_start(4)
-        self.sidebar_play_button.set_margin_end(4)
-        self.sidebar.append(self.sidebar_play_button)
 
         self.sidebar_spacer = Gtk.Box()
         self.sidebar_spacer.set_vexpand(True)
@@ -2574,7 +2650,8 @@ class RobloxLauncher(Gtk.Application):
             self.version_badge.set_text("Roblox client is not installed yet")
         # Play stays clickable during setup; it queues the launch.
         self.play_button.set_sensitive(True)
-        self.sidebar_play_button.set_sensitive(True)
+        if self.sidebar_play_button is not None:
+            self.sidebar_play_button.set_sensitive(True)
         self.terminate_button.set_sensitive(not self.job_running)
         self.update_button.set_sensitive(not self.job_running)
         self.launcher_update_button.set_sensitive(not self.job_running)
