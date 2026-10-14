@@ -35,6 +35,7 @@ try:
 except (ImportError, ValueError):
     Secret = None
 
+import glass
 import mods
 
 
@@ -424,7 +425,7 @@ dropdown:focus {
   line-height: 1.4;
 }
 .app-shell {
-  background: @app_bg;
+  background: transparent;
 }
 .discover-page {
   background: #fff;
@@ -1480,7 +1481,9 @@ class RobloxLauncher(Gtk.Application):
         welcome_copy.set_wrap(True)
         welcome_text.append(welcome_copy)
 
-        status_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=9)
+        status_row = Gtk.Box(
+            orientation=Gtk.Orientation.HORIZONTAL, spacing=9
+        )
         status_row.add_css_class("status")
         content.append(status_row)
         self.status_icon = Gtk.Image.new_from_icon_name("dialog-information-symbolic")
