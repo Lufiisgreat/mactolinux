@@ -288,9 +288,9 @@ button {
   background: @glass_button_bg;
   color: @app_fg;
   border: 1px solid @glass_border;
-  border-radius: 7px;
+  border-radius: 12px;
   font-weight: 500;
-  transition: all 140ms cubic-bezier(0.2, 0, 0, 1);
+  transition: all 100ms cubic-bezier(0.2, 0.2, 0.8, 0.2);
 }
 button:hover {
   background: @glass_button_hover;
@@ -319,7 +319,7 @@ button.flat:hover {
 .intro {
   background: transparent;
   border: none;
-  border-radius: 0;
+  border-radius: 4px;
   padding: 4px 0 16px;
 }
 .intro-title {
@@ -338,20 +338,20 @@ button.flat:hover {
 .welcome-icon {
   color: @accent;
   background: transparent;
-  border-radius: 0;
+  border-radius: 4px;
   padding: 0;
   margin-right: 4px;
 }
 .status {
   background: @glass_status_bg;
   border: 1px solid @glass_border;
-  border-radius: 8px;
+  border-radius: 12px;
   padding: 13px 16px;
 }
 .action-card {
   background: @glass_panel_bg;
   border: 1px solid @glass_border;
-  border-radius: 8px;
+  border-radius: 12px;
   padding: 16px;
 }
 .action-card .actions {
@@ -372,7 +372,7 @@ button.suggested-action {
   color: @accent_fg;
   border: 1px solid alpha(#000000, 0.15);
   font-weight: 600;
-  border-radius: 6px;
+  border-radius: 12px;
   transition: all 120ms ease-out;
 }
 button.suggested-action:hover {
@@ -390,13 +390,13 @@ switch:checked {
   background-color: @accent;
 }
 switch slider {
-  border-radius: 10px;
+  border-radius: 12px;
 }
 dropdown,
 entry,
 combobox button,
 togglebutton {
-  border-radius: 6px;
+  border-radius: 12px;
   background: @glass_input_bg;
   border: 1px solid @glass_border;
 }
@@ -469,7 +469,7 @@ dropdown:focus {
   padding: 0 12px;
   background: transparent;
   border: none;
-  border-radius: 6px;
+  border-radius: 12px;
   color: @secondary_fg;
   font-size: 13px;
   font-weight: 500;

@@ -13,6 +13,8 @@ gi.require_version("Gtk", "4.0")
 gi.require_version("Gdk", "4.0")
 from gi.repository import Gdk, Gio, GLib, Gtk
 
+import glass
+
 
 HERE = Path(__file__).resolve().parent
 DATA = HERE / "DO_NOT_SHARE"
@@ -69,9 +71,9 @@ button {
   background: @glass_button_bg;
   color: @app_fg;
   border: 1px solid @glass_border;
-  border-radius: 7px;
+  border-radius: 12px;
   font-weight: 500;
-  transition: all 140ms cubic-bezier(0.2, 0, 0, 1);
+  transition: all 100ms cubic-bezier(0.2, 0.2, 0.8, 0.2);
 }
 button:hover {
   background: @glass_button_hover;
@@ -91,10 +93,10 @@ headerbar {
   padding: 28px 32px 24px;
 }
 .launch-card {
-  background: transparent;
-  border: none;
-  border-radius: 0;
-  padding: 12px 4px;
+  background: @glass_panel_bg;
+  border: 1px solid @glass_border;
+  border-radius: 12px;
+  padding: 16px;
 }
 .launch-title {
   font-size: 20px;
@@ -112,7 +114,7 @@ headerbar {
 .log-panel {
   background: @glass_panel_bg;
   border: 1px solid @glass_border;
-  border-radius: 10px;
+  border-radius: 12px;
   box-shadow: 0 2px 10px @glass_shadow;
 }
 .log-header {
@@ -181,7 +183,12 @@ class RobloxLaunchWindow(Gtk.Application):
             spacing=12,
         )
         content.add_css_class("launch-content")
-        self.window.set_child(content)
+        backdrop = glass.GlassBackdrop()
+        glass.FrostedBox.backdrop = backdrop
+        glass_overlay = Gtk.Overlay()
+        glass_overlay.set_child(backdrop)
+        glass_overlay.add_overlay(content)
+        self.window.set_child(glass_overlay)
 
         header = Gtk.HeaderBar()
         self.window.set_titlebar(header)
@@ -189,7 +196,7 @@ class RobloxLaunchWindow(Gtk.Application):
         title.add_css_class("title")
         header.set_title_widget(title)
 
-        hero = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
+        hero = glass.FrostedBox(orientation=Gtk.Orientation.VERTICAL, spacing=12)
         hero.set_halign(Gtk.Align.FILL)
         hero.add_css_class("launch-card")
         content.append(hero)
@@ -229,7 +236,7 @@ class RobloxLaunchWindow(Gtk.Application):
         self.status.set_wrap(True)
         hero.append(self.status)
 
-        logs = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+        logs = glass.FrostedBox(orientation=Gtk.Orientation.VERTICAL, spacing=0)
         logs.set_vexpand(True)
         logs.set_size_request(-1, 260)
         logs.add_css_class("log-panel")
