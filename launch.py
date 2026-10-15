@@ -73,7 +73,7 @@ button {
   border: 1px solid @glass_border;
   border-radius: 12px;
   font-weight: 500;
-  transition: all 100ms cubic-bezier(0.2, 0.2, 0.8, 0.2);
+  transition: all 140ms cubic-bezier(0.2, 0, 0, 1);
 }
 button:hover {
   background: @glass_button_hover;

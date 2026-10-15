@@ -290,7 +290,7 @@ button {
   border: 1px solid @glass_border;
   border-radius: 12px;
   font-weight: 500;
-  transition: all 100ms cubic-bezier(0.2, 0.2, 0.8, 0.2);
+  transition: all 140ms cubic-bezier(0.2, 0, 0, 1);
 }
 button:hover {
   background: @glass_button_hover;
@@ -1347,9 +1347,9 @@ class RobloxLauncher(Gtk.Application):
         self.sidebar.add_css_class("sidebar")
         self.sidebar_revealer = Gtk.Revealer()
         self.sidebar_revealer.set_transition_type(
-            Gtk.RevealerTransitionType.SLIDE_RIGHT
+            Gtk.RevealerTransitionType.CROSSFADE
         )
-        self.sidebar_revealer.set_transition_duration(220)
+        self.sidebar_revealer.set_transition_duration(180)
         self.sidebar_revealer.set_reveal_child(True)
         self.sidebar_revealer.set_child(self.sidebar)
         shell.append(self.sidebar_revealer)
@@ -1396,7 +1396,7 @@ class RobloxLauncher(Gtk.Application):
         self.stack.set_hexpand(True)
         self.stack.set_vexpand(True)
         self.stack.set_transition_type(Gtk.StackTransitionType.CROSSFADE)
-        self.stack.set_transition_duration(200)
+        self.stack.set_transition_duration(180)
         shell.append(self.stack)
         self.apply_theme(self.settings["theme"])
 
