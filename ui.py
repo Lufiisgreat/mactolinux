@@ -1347,9 +1347,9 @@ class RobloxLauncher(Gtk.Application):
         self.sidebar.add_css_class("sidebar")
         self.sidebar_revealer = Gtk.Revealer()
         self.sidebar_revealer.set_transition_type(
-            Gtk.RevealerTransitionType.CROSSFADE
+            Gtk.RevealerTransitionType.SLIDE_RIGHT
         )
-        self.sidebar_revealer.set_transition_duration(180)
+        self.sidebar_revealer.set_transition_duration(220)
         self.sidebar_revealer.set_reveal_child(True)
         self.sidebar_revealer.set_child(self.sidebar)
         shell.append(self.sidebar_revealer)
