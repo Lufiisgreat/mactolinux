@@ -81,7 +81,7 @@ if [ -L "$COMMAND_LINK" ] &&
 fi
 
 for file in \
-    FFlags.json README.md install.sh launch.py launch.sh mods.py \
+    FFlags.json README.md install.sh launch.py launch.sh mods.py glass.py \
     roblox-linux-release.png run.sh ui.py ui.sh update-roblox.sh \
     uninstaller.sh RobloxLinux.AppImage .RobloxLinux.AppImage.new; do
     if [ -f "$HERE/$file" ] || [ -L "$HERE/$file" ]; then

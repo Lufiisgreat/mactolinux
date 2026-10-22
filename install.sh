@@ -440,7 +440,7 @@ if ! tar -xzf "$TEMP_DIR/source.tar.gz" \
 fi
 
 for source_file in \
-    ui.py launch.py mods.py ui.sh launch.sh run.sh update-roblox.sh \
+    ui.py launch.py mods.py glass.py ui.sh launch.sh run.sh update-roblox.sh \
     uninstaller.sh FFlags.json roblox-linux-release.png roblox-logo-white.png; do
     [ -f "$TEMP_DIR/source/$source_file" ] ||
         fail "The source archive is missing $source_file."
@@ -450,7 +450,7 @@ step "Installing to $INSTALL_DIR"
 mkdir -p "$INSTALL_DIR" "$BIN_DIR" "$APPLICATIONS_DIR"
 
 for source_file in \
-    ui.py launch.py mods.py FFlags.json roblox-linux-release.png roblox-logo-white.png README.md; do
+    ui.py launch.py mods.py glass.py FFlags.json roblox-linux-release.png roblox-logo-white.png README.md; do
     if [ "$source_file" = "FFlags.json" ] && [ -e "$INSTALL_DIR/FFlags.json" ]; then
         continue
     fi
