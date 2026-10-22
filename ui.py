@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import hashlib
 import json
 import math
 import os
@@ -651,6 +652,37 @@ def appimage_looks_valid(path):
     if header[:4] != b"\x7fELF" or header[4] != 2 or header[5] != 1:
         return False
     return int.from_bytes(header[18:20], "little") == 0x3E
+
+
+def file_sha256(path):
+    """Return the hex sha256 of a file, or "" when it cannot be read."""
+    digest = hashlib.sha256()
+    try:
+        with path.open("rb") as handle:
+            for chunk in iter(lambda: handle.read(1 << 20), b""):
+                digest.update(chunk)
+    except OSError:
+        return ""
+    return digest.hexdigest()
+
+
+def appimage_matches_asset(path, size, digest):
+    """Return True when the installed AppImage already matches the release asset.
+
+    The release tag alone is not enough: an asset can be replaced without a new
+    tag, and a locally patched build can share the tag but not the bytes. Use
+    the asset size and sha256 digest published by the GitHub API when present,
+    and fall back to the tag when the API provides neither.
+    """
+    try:
+        actual_size = path.stat().st_size
+    except OSError:
+        return False
+    if isinstance(size, int) and actual_size != size:
+        return False
+    if isinstance(digest, str) and digest.startswith("sha256:"):
+        return file_sha256(path) == digest[7:]
+    return True
 
 
 def _desktop_tokens():
@@ -3385,9 +3417,15 @@ class RobloxLauncher(Gtk.Application):
             ).strip()
         except OSError:
             installed_tag = ""
-        # Compare release tags rather than file sizes: two builds can differ in
-        # content and still compress to exactly the same byte count.
-        if installed_tag == tag and APPIMAGE.is_file():
+        # Compare the asset itself, not just the tag: a release can be re-uploaded
+        # without a new tag, and a locally patched build can share the tag while
+        # having different bytes. Size and sha256 come from the GitHub API.
+        announced_digest = asset.get("digest")
+        if (
+            installed_tag == tag
+            and APPIMAGE.is_file()
+            and appimage_matches_asset(APPIMAGE, announced_size, announced_digest)
+        ):
             return f"The AppImage is already release {tag}."
 
         DATA.mkdir(mode=0o700, parents=True, exist_ok=True)
@@ -3425,6 +3463,15 @@ class RobloxLauncher(Gtk.Application):
             staged.unlink(missing_ok=True)
             return (
                 f"Release {tag} downloaded incompletely; kept the current one."
+            )
+        if (
+            isinstance(announced_digest, str)
+            and announced_digest.startswith("sha256:")
+            and file_sha256(staged) != announced_digest[7:]
+        ):
+            staged.unlink(missing_ok=True)
+            return (
+                f"Release {tag} failed its checksum check; kept the current one."
             )
 
         try:
